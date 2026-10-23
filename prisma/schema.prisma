@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,4 +8,58 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum CallStatus {
+  UPLOADED
+  TRANSCRIBING
+  TRANSCRIBED
+  ANALYZING
+  DONE
+  FAILED
+}
+
+model Call {
+  id            String     @id @default(uuid())
+  originalName  String
+  audioPath     String     @unique
+  durationSec   Int?
+  status        CallStatus @default(UPLOADED)
+  assemblyId    String?
+  transcript    Json?      // utterances: { i, speaker, startMs, endMs, text }
+  agentSpeaker  String?    // "A" or "B"
+  category      String?    // SALES | RETENTION | SERVICE | NOT_SCORABLE
+  subtype       String?    // scheduling, billing, voicemail, wrong_number...
+  direction     String?    // INBOUND | OUTBOUND | UNKNOWN
+  repName       String?
+  outcome       String?    // BOOKED | NOT_BOOKED | SAVED | LOST | RESOLVED | UNRESOLVED
+  outcomeReason String?
+  summary       String?
+  details       Json?      // pest type, service requested, follow-up, etc.
+  coaching      Json?      // strengths, improvements
+  score         Float?     // computed in code
+  rubricVersion String?    // which rubric produced score + criteria
+  callDate      DateTime?  // null until a real source provides it
+  failedStage   String?
+  errorDetail   String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  criteria      CriterionResult[]
+
+  @@index([status])
+  @@index([category, outcome])
+  @@index([repName])
+}
+
+model CriterionResult {
+  id          String  @id @default(uuid())
+  callId      String
+  call        Call    @relation(fields: [callId], references: [id], onDelete: Cascade)
+  criterionId String
+  result      String  // PASS | FAIL | NA
+  evidence    String?
+  utterance   Int?    // index into transcript
+
+  @@unique([callId, criterionId])
+  @@index([criterionId, result])
 }
