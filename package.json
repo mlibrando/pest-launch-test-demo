@@ -6,17 +6,21 @@
     "dev": "next dev",
     "build": "prisma generate --config prisma7.config.ts && next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "hash-password": "tsx scripts/hash-password.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.1.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "7",
+    "@react-stately/utils": "^3.12.1",
     "@supabase/supabase-js": "^2.118.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@untitledui/icons": "^0.0.23",
     "assemblyai": "^4.41.7",
     "dotenv": "^18.0.9",
+    "input-otp": "^1.5.0",
+    "jose": "^6.2.13",
     "next": "16.4.2",
     "next-themes": "^0.4.6",
     "pg": "^8.23.1",
