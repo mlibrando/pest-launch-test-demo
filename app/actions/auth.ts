@@ -27,7 +27,7 @@ export async function login(_state: LoginState, formData: FormData): Promise<Log
     }
 
     await createSession(username);
-    redirect("/");
+    redirect("/overview");
 }
 
 export async function logout() {
