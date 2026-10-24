@@ -63,3 +63,28 @@ model CriterionResult {
   @@unique([callId, criterionId])
   @@index([criterionId, result])
 }
+
+enum RubricStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  fileName    String
+  storagePath String   @unique // {id}.{ext} in the rubric-documents bucket
+  mimeType    String
+  createdAt   DateTime @default(now())
+}
+
+model RubricSet {
+  id                String       @id @default(uuid())
+  version           Int          @unique @default(autoincrement())
+  status            RubricStatus @default(DRAFT)
+  sourceDocumentIds String[]
+  data              Json         // save_rubric tool input: scorecards, policies, conflicts, placeholders
+  createdAt         DateTime     @default(now())
+
+  @@index([status])
+}

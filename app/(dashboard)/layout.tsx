@@ -1,8 +1,5 @@
 import { Sidebar } from "@/components/application/sidebar/sidebar";
-
-// Fixed placeholders
-const USER_NAME = "Admin";
-const CLIENT_NAME = "ABC Pest Busters";
+import { CLIENT_NAME, USER_NAME } from "@/lib/account";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
     return (
