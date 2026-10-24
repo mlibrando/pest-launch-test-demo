@@ -5,9 +5,9 @@ import { ClipboardCheck, UploadCloud02, XClose } from "@untitledui/icons";
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { uploadRubricDocuments, type RubricActionState } from "@/app/actions/rubrics";
 import { Button } from "@/components/base/buttons/button";
-import type { RubricData } from "@/lib/rubrics";
+import { unresolvedItems, type RubricData } from "@/lib/rubrics";
 import { cx } from "@/utils/cx";
-import { DraftReviewPanel } from "./draft-review";
+import { DraftReviewPanel, ResolvePill } from "./draft-review";
 
 interface RubricSet {
     id: string;
@@ -92,15 +92,14 @@ export function RubricSetsModal({ activeSet, draft, versions }: RubricSetsModalP
 }
 
 function DraftRow({ set, onReview }: { set: RubricSet; onReview: () => void }) {
-    const { conflicts, placeholders, scorecards } = set.data;
-    const criteriaCount = scorecards.reduce((n, sc) => n + sc.criteria.length, 0);
+    const criteriaCount = set.data.scorecards.reduce((n, sc) => n + sc.criteria.length, 0);
     return (
         <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-brand-primary p-4 ring-1 ring-brand">
-            <div>
+            <div className="flex flex-col gap-1">
                 <p className="text-md font-semibold text-primary">Draft v{set.version} ready for review</p>
-                <p className="text-sm text-tertiary">
-                    {scorecards.length} scorecards · {criteriaCount} criteria · {conflicts.length} conflicts · {placeholders.length}{" "}
-                    placeholders
+                <p className="flex items-center gap-2 text-sm text-tertiary">
+                    {set.data.scorecards.length} scorecards · {criteriaCount} criteria
+                    <ResolvePill count={unresolvedItems(set.data).length} />
                 </p>
             </div>
             <Button size="md" onClick={onReview}>

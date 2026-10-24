@@ -5,7 +5,8 @@ import mammoth from "mammoth";
 import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
-import { extractRubric, RUBRIC_BUCKET, validateRubric, type RubricData, type SourceDocument } from "@/lib/rubrics";
+import { extractRubric, type SourceDocument } from "@/lib/rubric-extraction";
+import { applyPlaceholders, RUBRIC_BUCKET, validateRubric, type RubricData } from "@/lib/rubrics";
 import { supabase } from "@/lib/supabase";
 
 export type RubricActionState = { error?: string; draftVersion?: number } | undefined;
@@ -87,10 +88,18 @@ export async function activateRubricSet(id: string): Promise<RubricActionState> 
     await requireSession();
 
     try {
-        // Batch transaction: if the target isn't a draft, the update throws and the archive is rolled back.
+        const draft = await prisma.rubricSet.findFirst({ where: { id, status: "DRAFT" } });
+        if (!draft) return { error: "Only drafts can be activated." };
+
+        // The active version is a snapshot with placeholder values filled in, so the grader never sees them.
+        const data = applyPlaceholders(draft.data as RubricData);
+        const invalid = validateRubric(data);
+        if (invalid) return { error: invalid };
+
+        // Batch transaction: if the draft changed status meanwhile, the update throws and the archive is rolled back.
         await prisma.$transaction([
             prisma.rubricSet.updateMany({ where: { status: "ACTIVE" }, data: { status: "ARCHIVED" } }),
-            prisma.rubricSet.update({ where: { id, status: "DRAFT" }, data: { status: "ACTIVE" } }),
+            prisma.rubricSet.update({ where: { id, status: "DRAFT" }, data: { status: "ACTIVE", data: data as object } }),
         ]);
     } catch (err) {
         return { error: errorMessage(err) };

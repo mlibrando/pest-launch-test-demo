@@ -1,15 +1,26 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ChevronDown, XClose } from "@untitledui/icons";
+import { useState, useTransition, type ReactNode } from "react";
+import { CheckCircle, ChevronDown, XClose } from "@untitledui/icons";
 import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { activateRubricSet, saveRubricDraft, type RubricActionState } from "@/app/actions/rubrics";
 import { Button } from "@/components/base/buttons/button";
-import type { Criterion, RubricData } from "@/lib/rubrics";
+import { Input } from "@/components/base/input/input";
+import { Tooltip, TooltipTrigger } from "@/components/base/tooltip/tooltip";
+import { CLIENT_NAME } from "@/lib/account";
+import {
+    isPlaceholderResolved,
+    unresolvedItems,
+    type Criterion,
+    type PlaceholderValue,
+    type RubricData,
+} from "@/lib/rubrics";
 import { cx } from "@/utils/cx";
 
 const FIELD_CLASS =
     "w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary shadow-xs ring-1 ring-primary outline-none ring-inset focus:ring-2 focus:ring-brand";
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 interface DraftReviewPanelProps {
     id: string;
@@ -25,12 +36,19 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
     const [data, setData] = useState(initialData);
     const [dirty, setDirty] = useState(false);
     const [editing, setEditing] = useState<string | null>(null);
+    const [confirm, setConfirm] = useState<"discard" | "activate" | null>(null);
     const [error, setError] = useState<string>();
     const [pending, startTransition] = useTransition();
 
-    const updateCriterion = (scorecardIndex: number, criterionIndex: number, patch: Partial<Criterion>) => {
+    const unresolved = unresolvedItems(data);
+
+    const update = (fn: (d: RubricData) => RubricData) => {
         setDirty(true);
-        setData((d) => ({
+        setData(fn);
+    };
+
+    const updateCriterion = (scorecardIndex: number, criterionIndex: number, patch: Partial<Criterion>) =>
+        update((d) => ({
             ...d,
             scorecards: d.scorecards.map((sc, i) =>
                 i !== scorecardIndex
@@ -38,7 +56,15 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
                     : { ...sc, criteria: sc.criteria.map((c, j) => (j !== criterionIndex ? c : { ...c, ...patch })) },
             ),
         }));
-    };
+
+    const updatePlaceholder = (token: string, patch: PlaceholderValue) =>
+        update((d) => ({
+            ...d,
+            placeholderValues: { ...d.placeholderValues, [token]: { ...d.placeholderValues?.[token], ...patch } },
+        }));
+
+    const updateConflict = (index: number, patch: Partial<RubricData["conflicts"][number]>) =>
+        update((d) => ({ ...d, conflicts: d.conflicts.map((c, i) => (i !== index ? c : { ...c, ...patch })) }));
 
     const run = (action: () => Promise<RubricActionState>, onSuccess: () => void) =>
         startTransition(async () => {
@@ -47,21 +73,53 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
             if (!result?.error) onSuccess();
         });
 
-    const requestClose = () => {
-        if (dirty) {
-            if (!window.confirm("Discard unsaved changes?")) return;
-            setData(initialData);
-            setDirty(false);
-        }
+    const close = () => {
+        setData(initialData);
+        setDirty(false);
         setEditing(null);
+        setConfirm(null);
         setError(undefined);
         onClose();
     };
 
+    const activate = () => {
+        setConfirm(null);
+        run(() => activateRubricSet(id), onActivated);
+    };
+
+    // Shows placeholder tokens in criterion text as their filled-in value, highlighted, so the reviewer sees the effect.
+    const tokenPattern = data.placeholders.length ? new RegExp(`(${data.placeholders.map(escapeRegExp).join("|")})`) : null;
+    const preview = (text: string): ReactNode =>
+        tokenPattern
+            ? text.split(tokenPattern).map((part, i) => {
+                  if (!data.placeholders.includes(part)) return part;
+                  const v = data.placeholderValues?.[part];
+                  const filled = !v?.varies && v?.value?.trim();
+                  return (
+                      <mark
+                          key={i}
+                          className={cx(
+                              "rounded px-0.5",
+                              filled ? "bg-success-secondary text-success-primary" : v?.varies ? "bg-secondary text-secondary" : "bg-warning-secondary text-warning-primary",
+                          )}
+                      >
+                          {filled || part}
+                      </mark>
+                  );
+              })
+            : text;
+
+    const criteriaUsing = (token: string) =>
+        data.scorecards.flatMap((sc) =>
+            sc.criteria.filter((c) => [c.label, c.qualityBar, c.appliesWhen].some((t) => t?.includes(token))).map((c) => c.label),
+        );
+
+    const resolveTotal = data.placeholders.length + data.conflicts.length;
+
     return (
         <ModalOverlay
             isOpen={isOpen}
-            onOpenChange={(open) => !open && requestClose()}
+            onOpenChange={(open) => !open && (dirty ? setConfirm("discard") : close())}
             isDismissable
             className="fixed inset-0 z-50 bg-overlay/70"
         >
@@ -73,39 +131,62 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
                                 Review draft v{version}
                             </Heading>
                             <p className="text-sm text-tertiary">From {documentNames.join(", ")}</p>
-                            <div className="flex gap-2 pt-1">
-                                <CountPill count={data.conflicts.length} label="conflict" />
-                                <CountPill count={data.placeholders.length} label="placeholder" />
-                            </div>
+                            {resolveTotal > 0 && (
+                                <div className="pt-1">
+                                    <ResolvePill count={unresolved.length} />
+                                </div>
+                            )}
                         </div>
-                        <Button color="tertiary" size="sm" iconLeading={<XClose data-icon />} aria-label="Close" onClick={requestClose} />
+                        <Button
+                            color="tertiary"
+                            size="sm"
+                            iconLeading={<XClose data-icon />}
+                            aria-label="Close"
+                            onClick={() => (dirty ? setConfirm("discard") : close())}
+                        />
                     </header>
 
                     <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
-                        {data.conflicts.length > 0 && (
-                            <Notice title="Conflicts to review" tone="warning">
-                                {data.conflicts.map((c, i) => (
-                                    <li key={i}>
-                                        {c.description} <span className="font-semibold">{c.question}</span>
-                                    </li>
-                                ))}
-                            </Notice>
+                        {resolveTotal > 0 && (
+                            <section className="rounded-lg ring-1 ring-secondary">
+                                <h3 className="border-b border-secondary px-4 py-3 text-md font-semibold text-primary">
+                                    To resolve{" "}
+                                    <span className="font-normal text-tertiary">
+                                        · {resolveTotal - unresolved.length} of {resolveTotal} done
+                                    </span>
+                                </h3>
+                                <ul className="divide-y divide-secondary">
+                                    {data.placeholders.map((token) => (
+                                        <li key={token}>
+                                            <PlaceholderRow
+                                                token={token}
+                                                value={data.placeholderValues?.[token]}
+                                                usedIn={criteriaUsing(token)}
+                                                suggestion={/business|company/i.test(token) ? CLIENT_NAME : undefined}
+                                                onChange={(patch) => updatePlaceholder(token, patch)}
+                                            />
+                                        </li>
+                                    ))}
+                                    {data.conflicts.map((conflict, i) => (
+                                        <li key={i}>
+                                            <ConflictRow conflict={conflict} onChange={(patch) => updateConflict(i, patch)} />
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
                         )}
-                        {data.placeholders.length > 0 && (
-                            <Notice title="Unfilled placeholders" tone="warning">
-                                {data.placeholders.map((p, i) => (
-                                    <li key={i}>{p}</li>
-                                ))}
-                            </Notice>
-                        )}
+
                         {data.policies.length > 0 && (
-                            <Notice title="Policies" tone="neutral">
-                                {data.policies.map((p, i) => (
-                                    <li key={i}>
-                                        {p.rule} <span className="text-tertiary">({p.sourceRef})</span>
-                                    </li>
-                                ))}
-                            </Notice>
+                            <div className="rounded-lg bg-secondary p-4 text-sm">
+                                <p className="mb-2 font-semibold text-primary">Policies</p>
+                                <ul className="flex list-disc flex-col gap-1 pl-5 text-secondary">
+                                    {data.policies.map((p, i) => (
+                                        <li key={i}>
+                                            {p.rule && preview(p.rule)} <span className="text-tertiary">({p.sourceRef})</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         )}
 
                         {data.scorecards.map((scorecard, s) => (
@@ -125,6 +206,7 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
                                                 <CriterionRow
                                                     criterion={criterion}
                                                     isEditing={editing === key}
+                                                    preview={preview}
                                                     onToggle={() => setEditing(editing === key ? null : key)}
                                                     onChange={(patch) => updateCriterion(s, c, patch)}
                                                 />
@@ -152,38 +234,166 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
                         >
                             Save changes
                         </Button>
-                        <Button size="md" isDisabled={dirty || pending} onClick={() => run(() => activateRubricSet(id), onActivated)}>
-                            Activate
+                        <Button
+                            size="md"
+                            isDisabled={dirty || pending}
+                            onClick={() => (unresolved.length ? setConfirm("activate") : activate())}
+                        >
+                            {unresolved.length ? `Activate (${unresolved.length} unresolved)` : "Activate"}
                         </Button>
                     </footer>
+
+                    <ConfirmDialog
+                        isOpen={confirm === "discard"}
+                        title="Discard unsaved changes?"
+                        confirmLabel="Discard"
+                        isDestructive
+                        onConfirm={close}
+                        onCancel={() => setConfirm(null)}
+                    >
+                        Your edits since the last save will be lost.
+                    </ConfirmDialog>
+                    <ConfirmDialog
+                        isOpen={confirm === "activate"}
+                        title="Activate with unresolved items?"
+                        confirmLabel="Activate anyway"
+                        onConfirm={activate}
+                        onCancel={() => setConfirm(null)}
+                    >
+                        <p>The grader will use this rubric as-is. Still unresolved:</p>
+                        <ul className="mt-2 flex list-disc flex-col gap-1 pl-5">
+                            {unresolved.map((item, i) => (
+                                <li key={i}>{item}</li>
+                            ))}
+                        </ul>
+                    </ConfirmDialog>
                 </Dialog>
             </Modal>
         </ModalOverlay>
     );
 }
 
+interface PlaceholderRowProps {
+    token: string;
+    value?: PlaceholderValue;
+    usedIn: string[];
+    suggestion?: string;
+    onChange: (patch: PlaceholderValue) => void;
+}
+
+function PlaceholderRow({ token, value, usedIn, suggestion, onChange }: PlaceholderRowProps) {
+    return (
+        <div className="flex flex-col gap-2 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 text-sm font-semibold text-primary">
+                    <ResolvedIcon resolved={isPlaceholderResolved(value)} />
+                    <code>{token}</code>
+                </span>
+                {usedIn.length > 0 && (
+                    <Tooltip title={`Used in ${usedIn.length} criteria`} description={usedIn.join(", ")}>
+                        <TooltipTrigger className="text-sm text-tertiary underline decoration-dotted">
+                            Used in {usedIn.length} criteria
+                        </TooltipTrigger>
+                    </Tooltip>
+                )}
+            </div>
+            <div className="flex items-center gap-4">
+                <Input
+                    size="sm"
+                    aria-label={`Value for ${token}`}
+                    placeholder={suggestion ?? "Value to use"}
+                    value={value?.value ?? ""}
+                    isDisabled={value?.varies}
+                    onChange={(v) => onChange({ value: v })}
+                    className="flex-1"
+                />
+                <label className="flex shrink-0 items-center gap-2 text-sm text-secondary">
+                    <input type="checkbox" checked={Boolean(value?.varies)} onChange={(e) => onChange({ varies: e.target.checked })} />
+                    Varies per call
+                </label>
+            </div>
+            {suggestion && !value?.value && !value?.varies && (
+                <div>
+                    <Button color="link-color" size="sm" onClick={() => onChange({ value: suggestion })}>
+                        Use “{suggestion}”
+                    </Button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface ConflictRowProps {
+    conflict: RubricData["conflicts"][number];
+    onChange: (patch: Partial<RubricData["conflicts"][number]>) => void;
+}
+
+function ConflictRow({ conflict, onChange }: ConflictRowProps) {
+    if (conflict.resolved) {
+        return (
+            <div className="flex items-start gap-2 px-4 py-3 text-sm">
+                <ResolvedIcon resolved />
+                <p className="min-w-0 flex-1 text-secondary">
+                    {conflict.question || conflict.description} <span className="text-tertiary">— {conflict.answer}</span>
+                </p>
+                <Button color="link-gray" size="sm" onClick={() => onChange({ resolved: false })}>
+                    Reopen
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col gap-2 px-4 py-3 text-sm">
+            <div className="flex items-start gap-2">
+                <ResolvedIcon resolved={false} />
+                <div className="flex flex-col gap-1">
+                    <p className="text-secondary">{conflict.description}</p>
+                    <p className="font-semibold text-primary">{conflict.question}</p>
+                </div>
+            </div>
+            <Input
+                size="sm"
+                aria-label="Your answer"
+                placeholder="Your answer…"
+                value={conflict.answer ?? ""}
+                onChange={(v) => onChange({ answer: v })}
+            />
+            <div className="flex items-center gap-4">
+                <Button color="secondary" size="sm" isDisabled={!conflict.answer?.trim()} onClick={() => onChange({ resolved: true })}>
+                    Mark resolved
+                </Button>
+                <Button color="link-gray" size="sm" onClick={() => onChange({ answer: "Not an issue", resolved: true })}>
+                    Not an issue
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 interface CriterionRowProps {
     criterion: Criterion;
     isEditing: boolean;
+    preview: (text: string) => ReactNode;
     onToggle: () => void;
     onChange: (patch: Partial<Criterion>) => void;
 }
 
-function CriterionRow({ criterion, isEditing, onToggle, onChange }: CriterionRowProps) {
+function CriterionRow({ criterion, isEditing, preview, onToggle, onChange }: CriterionRowProps) {
     return (
         <div className={cx(isEditing && "bg-secondary")}>
             <button type="button" onClick={onToggle} className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-primary_hover">
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-primary">{criterion.label}</span>
+                        <span className="text-sm font-semibold text-primary">{preview(criterion.label)}</span>
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-tertiary ring-1 ring-secondary">
                             {criterion.quadrant}
                         </span>
                     </div>
-                    {!isEditing && <p className="line-clamp-2 text-sm text-tertiary">{criterion.qualityBar}</p>}
+                    {!isEditing && <p className="line-clamp-2 text-sm text-tertiary">{preview(criterion.qualityBar)}</p>}
                     {!isEditing && criterion.appliesWhen && (
                         <p className="text-xs text-tertiary">
-                            Only when {criterion.appliesWhen}
+                            Only when {preview(criterion.appliesWhen)}
                             {criterion.ifNotApplicable && ` · otherwise ${criterion.ifNotApplicable.replace("_", " ")}`}
                         </p>
                     )}
@@ -235,34 +445,70 @@ function CriterionRow({ criterion, isEditing, onToggle, onChange }: CriterionRow
     );
 }
 
-function CountPill({ count, label }: { count: number; label: string }) {
+interface ConfirmDialogProps {
+    isOpen: boolean;
+    title: string;
+    confirmLabel: string;
+    isDestructive?: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+    children: ReactNode;
+}
+
+function ConfirmDialog({ isOpen, title, confirmLabel, isDestructive, onConfirm, onCancel, children }: ConfirmDialogProps) {
+    return (
+        <ModalOverlay
+            isOpen={isOpen}
+            onOpenChange={(open) => !open && onCancel()}
+            isDismissable
+            className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/70 p-4"
+        >
+            <Modal className="w-full max-w-md">
+                <Dialog role="alertdialog" className="flex flex-col gap-4 rounded-xl bg-primary p-6 shadow-xl outline-none">
+                    <Heading slot="title" className="text-lg font-semibold text-primary">
+                        {title}
+                    </Heading>
+                    <div className="text-sm text-tertiary">{children}</div>
+                    <div className="flex justify-end gap-3">
+                        <Button color="secondary" size="md" onClick={onCancel}>
+                            Go back
+                        </Button>
+                        <Button color={isDestructive ? "primary-destructive" : "primary"} size="md" onClick={onConfirm}>
+                            {confirmLabel}
+                        </Button>
+                    </div>
+                </Dialog>
+            </Modal>
+        </ModalOverlay>
+    );
+}
+
+export function ResolvePill({ count }: { count: number }) {
     return (
         <span
             className={cx(
                 "rounded-full px-2 py-0.5 text-xs font-medium",
-                count > 0 ? "bg-warning-primary text-warning-primary" : "bg-secondary text-tertiary",
+                count > 0 ? "bg-warning-primary text-warning-primary" : "bg-success-secondary text-success-primary",
             )}
         >
-            {count} {label}
-            {count === 1 ? "" : "s"}
+            {count > 0 ? `${count} to resolve` : "All resolved"}
         </span>
     );
 }
 
-function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
+function ResolvedIcon({ resolved }: { resolved: boolean }) {
+    return resolved ? (
+        <CheckCircle className="size-4 shrink-0 text-fg-success-primary" />
+    ) : (
+        <span className="size-4 shrink-0 rounded-full border-2 border-fg-warning-primary" />
+    );
+}
+
+function Field({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
     return (
         <label className={cx("flex flex-col gap-1.5 text-sm font-medium text-secondary", className)}>
             {label}
             {children}
         </label>
-    );
-}
-
-function Notice({ title, tone, children }: { title: string; tone: "warning" | "neutral"; children: React.ReactNode }) {
-    return (
-        <div className={cx("rounded-lg p-4 text-sm", tone === "warning" ? "bg-warning-primary" : "bg-secondary")}>
-            <p className="mb-2 font-semibold text-primary">{title}</p>
-            <ul className="flex list-disc flex-col gap-1 pl-5 text-secondary">{children}</ul>
-        </div>
     );
 }
