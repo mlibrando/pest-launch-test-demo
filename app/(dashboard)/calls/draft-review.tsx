@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition, type ReactNode } from "react";
-import { CheckCircle, ChevronDown, XClose } from "@untitledui/icons";
-import { Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
+import { CheckCircle, ChevronDown } from "@untitledui/icons";
+import { ConfirmDialog } from "@/components/application/confirm-dialog/confirm-dialog";
+import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-panel";
 import { activateRubricSet, saveRubricDraft, type RubricActionState } from "@/app/actions/rubrics";
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
@@ -116,160 +117,145 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
 
     const resolveTotal = data.placeholders.length + data.conflicts.length;
 
+    const requestClose = () => (dirty ? setConfirm("discard") : close());
+
     return (
-        <ModalOverlay
+        <SlideoutPanel
             isOpen={isOpen}
-            onOpenChange={(open) => !open && (dirty ? setConfirm("discard") : close())}
-            isDismissable
-            className="fixed inset-0 z-50 bg-overlay/70"
-        >
-            <Modal className="fixed inset-y-0 right-0 w-full max-w-3xl">
-                <Dialog className="flex h-full flex-col bg-primary shadow-xl outline-none">
-                    <header className="flex items-start justify-between gap-4 border-b border-secondary px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                            <Heading slot="title" className="text-lg font-semibold text-primary">
-                                Review draft v{version}
-                            </Heading>
-                            <p className="text-sm text-tertiary">From {documentNames.join(", ")}</p>
-                            {resolveTotal > 0 && (
-                                <div className="pt-1">
-                                    <ResolvePill count={unresolved.length} />
-                                </div>
-                            )}
+            onClose={requestClose}
+            title={`Review draft v${version}`}
+            description={
+                <>
+                    <p className="text-sm text-tertiary">From {documentNames.join(", ")}</p>
+                    {resolveTotal > 0 && (
+                        <div className="pt-1">
+                            <ResolvePill count={unresolved.length} />
                         </div>
-                        <Button
-                            color="tertiary"
-                            size="sm"
-                            iconLeading={<XClose data-icon />}
-                            aria-label="Close"
-                            onClick={() => (dirty ? setConfirm("discard") : close())}
-                        />
-                    </header>
-
-                    <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-5">
-                        {resolveTotal > 0 && (
-                            <section className="rounded-lg ring-1 ring-secondary">
-                                <h3 className="border-b border-secondary px-4 py-3 text-md font-semibold text-primary">
-                                    To resolve{" "}
-                                    <span className="font-normal text-tertiary">
-                                        · {resolveTotal - unresolved.length} of {resolveTotal} done
-                                    </span>
-                                </h3>
-                                <ul className="divide-y divide-secondary">
-                                    {data.placeholders.map((token) => (
-                                        <li key={token}>
-                                            <PlaceholderRow
-                                                token={token}
-                                                value={data.placeholderValues?.[token]}
-                                                usedIn={criteriaUsing(token)}
-                                                suggestion={/business|company/i.test(token) ? CLIENT_NAME : undefined}
-                                                onChange={(patch) => updatePlaceholder(token, patch)}
-                                            />
-                                        </li>
-                                    ))}
-                                    {data.conflicts.map((conflict, i) => (
-                                        <li key={i}>
-                                            <ConflictRow conflict={conflict} onChange={(patch) => updateConflict(i, patch)} />
-                                        </li>
-                                    ))}
-                                </ul>
-                            </section>
+                    )}
+                </>
+            }
+            footer={
+                <>
+                    <p className="mr-auto text-sm">
+                        {error ? (
+                            <span className="text-error-primary">{error}</span>
+                        ) : (
+                            dirty && <span className="text-warning-primary">Unsaved changes. Save before activating.</span>
                         )}
-
-                        {data.policies.length > 0 && (
-                            <div className="rounded-lg bg-secondary p-4 text-sm">
-                                <p className="mb-2 font-semibold text-primary">Policies</p>
-                                <ul className="flex list-disc flex-col gap-1 pl-5 text-secondary">
-                                    {data.policies.map((p, i) => (
-                                        <li key={i}>
-                                            {p.rule && preview(p.rule)} <span className="text-tertiary">({p.sourceRef})</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-
-                        {data.scorecards.map((scorecard, s) => (
-                            <section key={s} className="flex flex-col gap-2">
-                                <h3 className="text-md font-semibold text-primary">
-                                    {scorecard.callType}{" "}
-                                    <span className="font-normal text-tertiary">
-                                        · {scorecard.criteria.length} criteria · gold {scorecard.thresholds.gold ?? "–"} · green{" "}
-                                        {scorecard.thresholds.green ?? "–"}
-                                    </span>
-                                </h3>
-                                <ul className="divide-y divide-secondary rounded-lg ring-1 ring-secondary">
-                                    {scorecard.criteria.map((criterion, c) => {
-                                        const key = `${s}:${criterion.id}`;
-                                        return (
-                                            <li key={key}>
-                                                <CriterionRow
-                                                    criterion={criterion}
-                                                    isEditing={editing === key}
-                                                    preview={preview}
-                                                    onToggle={() => setEditing(editing === key ? null : key)}
-                                                    onChange={(patch) => updateCriterion(s, c, patch)}
-                                                />
-                                            </li>
-                                        );
-                                    })}
-                                </ul>
-                            </section>
+                    </p>
+                    <Button
+                        color="secondary"
+                        size="md"
+                        isDisabled={!dirty || pending}
+                        onClick={() => run(() => saveRubricDraft(id, data), () => setDirty(false))}
+                    >
+                        Save changes
+                    </Button>
+                    <Button
+                        size="md"
+                        isDisabled={dirty || pending}
+                        onClick={() => (unresolved.length ? setConfirm("activate") : activate())}
+                    >
+                        {unresolved.length ? `Activate (${unresolved.length} unresolved)` : "Activate"}
+                    </Button>
+                </>
+            }
+        >
+            {resolveTotal > 0 && (
+                <section className="rounded-lg ring-1 ring-secondary">
+                    <h3 className="border-b border-secondary px-4 py-3 text-md font-semibold text-primary">
+                        To resolve{" "}
+                        <span className="font-normal text-tertiary">
+                            · {resolveTotal - unresolved.length} of {resolveTotal} done
+                        </span>
+                    </h3>
+                    <ul className="divide-y divide-secondary">
+                        {data.placeholders.map((token) => (
+                            <li key={token}>
+                                <PlaceholderRow
+                                    token={token}
+                                    value={data.placeholderValues?.[token]}
+                                    usedIn={criteriaUsing(token)}
+                                    suggestion={/business|company/i.test(token) ? CLIENT_NAME : undefined}
+                                    onChange={(patch) => updatePlaceholder(token, patch)}
+                                />
+                            </li>
                         ))}
-                    </div>
+                        {data.conflicts.map((conflict, i) => (
+                            <li key={i}>
+                                <ConflictRow conflict={conflict} onChange={(patch) => updateConflict(i, patch)} />
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
 
-                    <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-secondary px-6 py-4">
-                        <p className="mr-auto text-sm">
-                            {error ? (
-                                <span className="text-error-primary">{error}</span>
-                            ) : (
-                                dirty && <span className="text-warning-primary">Unsaved changes. Save before activating.</span>
-                            )}
-                        </p>
-                        <Button
-                            color="secondary"
-                            size="md"
-                            isDisabled={!dirty || pending}
-                            onClick={() => run(() => saveRubricDraft(id, data), () => setDirty(false))}
-                        >
-                            Save changes
-                        </Button>
-                        <Button
-                            size="md"
-                            isDisabled={dirty || pending}
-                            onClick={() => (unresolved.length ? setConfirm("activate") : activate())}
-                        >
-                            {unresolved.length ? `Activate (${unresolved.length} unresolved)` : "Activate"}
-                        </Button>
-                    </footer>
+            {data.policies.length > 0 && (
+                <div className="rounded-lg bg-secondary p-4 text-sm">
+                    <p className="mb-2 font-semibold text-primary">Policies</p>
+                    <ul className="flex list-disc flex-col gap-1 pl-5 text-secondary">
+                        {data.policies.map((p, i) => (
+                            <li key={i}>
+                                {p.rule && preview(p.rule)} <span className="text-tertiary">({p.sourceRef})</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
-                    <ConfirmDialog
-                        isOpen={confirm === "discard"}
-                        title="Discard unsaved changes?"
-                        confirmLabel="Discard"
-                        isDestructive
-                        onConfirm={close}
-                        onCancel={() => setConfirm(null)}
-                    >
-                        Your edits since the last save will be lost.
-                    </ConfirmDialog>
-                    <ConfirmDialog
-                        isOpen={confirm === "activate"}
-                        title="Activate with unresolved items?"
-                        confirmLabel="Activate anyway"
-                        onConfirm={activate}
-                        onCancel={() => setConfirm(null)}
-                    >
-                        <p>The grader will use this rubric as-is. Still unresolved:</p>
-                        <ul className="mt-2 flex list-disc flex-col gap-1 pl-5">
-                            {unresolved.map((item, i) => (
-                                <li key={i}>{item}</li>
-                            ))}
-                        </ul>
-                    </ConfirmDialog>
-                </Dialog>
-            </Modal>
-        </ModalOverlay>
+            {data.scorecards.map((scorecard, s) => (
+                <section key={s} className="flex flex-col gap-2">
+                    <h3 className="text-md font-semibold text-primary">
+                        {scorecard.callType}{" "}
+                        <span className="font-normal text-tertiary">
+                            · {scorecard.criteria.length} criteria · gold {scorecard.thresholds.gold ?? "–"} · green{" "}
+                            {scorecard.thresholds.green ?? "–"}
+                        </span>
+                    </h3>
+                    <ul className="divide-y divide-secondary rounded-lg ring-1 ring-secondary">
+                        {scorecard.criteria.map((criterion, c) => {
+                            const key = `${s}:${criterion.id}`;
+                            return (
+                                <li key={key}>
+                                    <CriterionRow
+                                        criterion={criterion}
+                                        isEditing={editing === key}
+                                        preview={preview}
+                                        onToggle={() => setEditing(editing === key ? null : key)}
+                                        onChange={(patch) => updateCriterion(s, c, patch)}
+                                    />
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </section>
+            ))}
+
+            <ConfirmDialog
+                isOpen={confirm === "discard"}
+                title="Discard unsaved changes?"
+                confirmLabel="Discard"
+                isDestructive
+                onConfirm={close}
+                onCancel={() => setConfirm(null)}
+            >
+                Your edits since the last save will be lost.
+            </ConfirmDialog>
+            <ConfirmDialog
+                isOpen={confirm === "activate"}
+                title="Activate with unresolved items?"
+                confirmLabel="Activate anyway"
+                onConfirm={activate}
+                onCancel={() => setConfirm(null)}
+            >
+                <p>The grader will use this rubric as-is. Still unresolved:</p>
+                <ul className="mt-2 flex list-disc flex-col gap-1 pl-5">
+                    {unresolved.map((item, i) => (
+                        <li key={i}>{item}</li>
+                    ))}
+                </ul>
+            </ConfirmDialog>
+        </SlideoutPanel>
     );
 }
 
@@ -442,44 +428,6 @@ function CriterionRow({ criterion, isEditing, preview, onToggle, onChange }: Cri
                 </div>
             )}
         </div>
-    );
-}
-
-interface ConfirmDialogProps {
-    isOpen: boolean;
-    title: string;
-    confirmLabel: string;
-    isDestructive?: boolean;
-    onConfirm: () => void;
-    onCancel: () => void;
-    children: ReactNode;
-}
-
-function ConfirmDialog({ isOpen, title, confirmLabel, isDestructive, onConfirm, onCancel, children }: ConfirmDialogProps) {
-    return (
-        <ModalOverlay
-            isOpen={isOpen}
-            onOpenChange={(open) => !open && onCancel()}
-            isDismissable
-            className="fixed inset-0 z-50 flex items-center justify-center bg-overlay/70 p-4"
-        >
-            <Modal className="w-full max-w-md">
-                <Dialog role="alertdialog" className="flex flex-col gap-4 rounded-xl bg-primary p-6 shadow-xl outline-none">
-                    <Heading slot="title" className="text-lg font-semibold text-primary">
-                        {title}
-                    </Heading>
-                    <div className="text-sm text-tertiary">{children}</div>
-                    <div className="flex justify-end gap-3">
-                        <Button color="secondary" size="md" onClick={onCancel}>
-                            Go back
-                        </Button>
-                        <Button color={isDestructive ? "primary-destructive" : "primary"} size="md" onClick={onConfirm}>
-                            {confirmLabel}
-                        </Button>
-                    </div>
-                </Dialog>
-            </Modal>
-        </ModalOverlay>
     );
 }
 

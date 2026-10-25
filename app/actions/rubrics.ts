@@ -3,11 +3,12 @@
 import { randomUUID } from "node:crypto";
 import mammoth from "mammoth";
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/auth/session";
+import { requireSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import { extractRubric, type SourceDocument } from "@/lib/rubric-extraction";
 import { applyPlaceholders, RUBRIC_BUCKET, validateRubric, type RubricData } from "@/lib/rubrics";
 import { supabase } from "@/lib/supabase";
+import { errorMessage } from "@/utils/error-message";
 
 export type RubricActionState = { error?: string; draftVersion?: number } | undefined;
 
@@ -15,12 +16,6 @@ const MIME_BY_EXT: Record<string, string> = {
     pdf: "application/pdf",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
-
-async function requireSession() {
-    if (!(await getSession())) throw new Error("Unauthorized");
-}
-
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 export async function uploadRubricDocuments(_state: RubricActionState, formData: FormData): Promise<RubricActionState> {
     await requireSession();
