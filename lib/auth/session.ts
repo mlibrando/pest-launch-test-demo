@@ -47,6 +47,10 @@ export async function getSession() {
     return decrypt(cookieStore.get(SESSION_COOKIE)?.value);
 }
 
+export async function requireSession() {
+    if (!(await getSession())) throw new Error("Unauthorized");
+}
+
 export async function deleteSession() {
     const cookieStore = await cookies();
     cookieStore.delete(SESSION_COOKIE);
