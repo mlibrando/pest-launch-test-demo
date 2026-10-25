@@ -17,7 +17,7 @@ function timeAgo(date: Date) {
     return relativeTime.format(Math.round(minutes / (60 * 24)), "day");
 }
 
-export function CallTable({ calls }: { calls: CallRow[] }) {
+export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: string[] }) {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const selected = calls.find((c) => c.id === selectedId);
 
@@ -41,6 +41,7 @@ export function CallTable({ calls }: { calls: CallRow[] }) {
                     <thead className="border-b border-secondary text-xs text-tertiary">
                         <tr>
                             <th className="px-6 py-3 font-medium">Recording</th>
+                            <th className="px-6 py-3 font-medium">Rep</th>
                             <th className="px-6 py-3 font-medium">Status</th>
                             <th className="px-6 py-3 font-medium">Duration</th>
                             <th className="px-6 py-3 font-medium">Uploaded</th>
@@ -55,6 +56,16 @@ export function CallTable({ calls }: { calls: CallRow[] }) {
                                         {call.originalName}
                                     </button>
                                     {call.status === "FAILED" && <p className="text-xs text-error-primary">{call.errorDetail}</p>}
+                                </td>
+                                <td className="px-6 py-4 text-secondary">
+                                    {call.rep?.name ??
+                                        (call.repName ? (
+                                            <span className="text-warning-primary" title="Not one of your reps yet">
+                                                {call.repName}?
+                                            </span>
+                                        ) : (
+                                            "–"
+                                        ))}
                                 </td>
                                 <td className="px-6 py-4">
                                     <StatusBadge
@@ -78,7 +89,7 @@ export function CallTable({ calls }: { calls: CallRow[] }) {
                 </table>
             )}
 
-            {selected && <CallDetailPanel key={selected.id} call={selected} onClose={() => setSelectedId(null)} />}
+            {selected && <CallDetailPanel key={selected.id} call={selected} repNames={repNames} onClose={() => setSelectedId(null)} />}
         </section>
     );
 }

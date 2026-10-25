@@ -12,6 +12,7 @@ export const AUDIO_MIME_BY_EXT: Record<string, string> = {
 
 export const fileExt = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 
-export type Utterance = { i: number; speaker: string; startMs: number; endMs: number; text: string };
+/** `original` holds the transcribed text when the intro correction changed it. */
+export type Utterance = { i: number; speaker: string; startMs: number; endMs: number; text: string; original?: string };
 
 export const formatSeconds = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;

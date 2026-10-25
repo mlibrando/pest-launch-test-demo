@@ -19,8 +19,31 @@ enum CallStatus {
   FAILED
 }
 
+model Company {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  reps      Rep[]
+  calls     Call[]
+}
+
+model Rep {
+  id        String   @id @default(uuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+  calls     Call[]
+
+  @@unique([companyId, name])
+}
+
 model Call {
   id            String     @id @default(uuid())
+  companyId     String
+  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  repId         String?
+  rep           Rep?       @relation(fields: [repId], references: [id], onDelete: SetNull)
   originalName  String
   audioPath     String     @unique
   durationSec   Int?
@@ -31,8 +54,8 @@ model Call {
   category      String?    // SALES | RETENTION | SERVICE | NOT_SCORABLE
   subtype       String?    // scheduling, billing, voicemail, wrong_number...
   direction     String?    // INBOUND | OUTBOUND | UNKNOWN
-  repName       String?
-  outcome       String?    // BOOKED | NOT_BOOKED | SAVED | LOST | RESOLVED | UNRESOLVED
+  repName       String?    // name the rep introduced themselves with
+  outcome      String?    // BOOKED | NOT_BOOKED | SAVED | LOST | RESOLVED | UNRESOLVED
   outcomeReason String?
   summary       String?
   details       Json?      // pest type, service requested, follow-up, etc.
@@ -47,6 +70,7 @@ model Call {
   criteria      CriterionResult[]
 
   @@index([status])
+  @@index([companyId, createdAt])
   @@index([category, outcome])
   @@index([repName])
 }

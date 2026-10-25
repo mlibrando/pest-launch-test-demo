@@ -16,6 +16,8 @@ export type CallRow = {
     durationSec: number | null;
     errorDetail: string | null;
     createdAt: Date;
+    repName: string | null;
+    rep: { name: string } | null;
 };
 
 const STATUS: Record<CallStatus, { label: string; className: string }> = {

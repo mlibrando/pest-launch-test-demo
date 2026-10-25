@@ -232,7 +232,8 @@ async function main() {
     .upload(audioPath, buffer, { contentType, upsert: false });
   if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
-  const call = await prisma.call.create({ data: { originalName, audioPath, status: "UPLOADED" } });
+  const company = await prisma.company.findFirstOrThrow({ orderBy: { name: "asc" } });
+  const call = await prisma.call.create({ data: { companyId: company.id, originalName, audioPath, status: "UPLOADED" } });
   log("db", `Call ${call.id}`);
 
   let stage = "transcribe";

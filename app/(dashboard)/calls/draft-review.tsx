@@ -8,7 +8,6 @@ import { activateRubricSet, saveRubricDraft, type RubricActionState } from "@/ap
 import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Tooltip, TooltipTrigger } from "@/components/base/tooltip/tooltip";
-import { CLIENT_NAME } from "@/lib/account";
 import {
     isPlaceholderResolved,
     unresolvedItems,
@@ -28,12 +27,13 @@ interface DraftReviewPanelProps {
     version: number;
     initialData: RubricData;
     documentNames: string[];
+    companyName: string;
     isOpen: boolean;
     onClose: () => void;
     onActivated: () => void;
 }
 
-export function DraftReviewPanel({ id, version, initialData, documentNames, isOpen, onClose, onActivated }: DraftReviewPanelProps) {
+export function DraftReviewPanel({ id, version, initialData, documentNames, companyName, isOpen, onClose, onActivated }: DraftReviewPanelProps) {
     const [data, setData] = useState(initialData);
     const [dirty, setDirty] = useState(false);
     const [editing, setEditing] = useState<string | null>(null);
@@ -176,7 +176,7 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, isOp
                                     token={token}
                                     value={data.placeholderValues?.[token]}
                                     usedIn={criteriaUsing(token)}
-                                    suggestion={/business|company/i.test(token) ? CLIENT_NAME : undefined}
+                                    suggestion={/business|company/i.test(token) ? companyName : undefined}
                                     onChange={(patch) => updatePlaceholder(token, patch)}
                                 />
                             </li>

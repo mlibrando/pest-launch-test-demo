@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Edit05 } from "@untitledui/icons";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getCallAudioUrl, getCallTranscript, updateUtterance } from "@/app/actions/calls";
+import { assignCallRep, getCallAudioUrl, getCallTranscript, updateUtterance } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-panel";
 import { Button } from "@/components/base/buttons/button";
@@ -17,7 +17,15 @@ const AUDIO_STALE_MS = PLAYBACK_URL_TTL_SEC * 1000 * 0.9;
 const FIELD_CLASS =
     "w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary shadow-xs ring-1 ring-primary outline-none ring-inset focus:ring-2 focus:ring-brand";
 
-export function CallDetailPanel({ call, onClose }: { call: CallRow; onClose: () => void }) {
+const NEW_REP = "__new";
+
+interface CallDetailPanelProps {
+    call: CallRow;
+    repNames: string[];
+    onClose: () => void;
+}
+
+export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProps) {
     const queryClient = useQueryClient();
     const [currentMs, setCurrentMs] = useState(0);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -87,6 +95,8 @@ export function CallDetailPanel({ call, onClose }: { call: CallRow; onClose: () 
         >
             {call.status === "FAILED" && <p className="rounded-lg bg-error-primary p-4 text-sm text-error-primary">{call.errorDetail}</p>}
 
+            <RepField call={call} repNames={repNames} />
+
             {audio.isPending ? (
                 <LoadingIndicator label="Loading recording…" className="py-3 text-sm text-tertiary" />
             ) : audio.isError ? (
@@ -136,6 +146,82 @@ export function CallDetailPanel({ call, onClose }: { call: CallRow; onClose: () 
     );
 }
 
+function RepField({ call, repNames }: { call: CallRow; repNames: string[] }) {
+    const [isAdding, setIsAdding] = useState(false);
+    const [newName, setNewName] = useState("");
+    const [error, setError] = useState<string>();
+    const [pending, startTransition] = useTransition();
+
+    const isKnown = (name: string) => repNames.some((n) => n.toLowerCase() === name.toLowerCase());
+    const unknownRep = !call.rep && call.repName && !isKnown(call.repName) ? call.repName : null;
+
+    const assign = (name: string) =>
+        startTransition(async () => {
+            const result = await assignCallRep(call.id, name);
+            setError(result.error);
+            if (!result.error) setIsAdding(false);
+        });
+
+    return (
+        <section className="flex flex-col gap-1.5">
+            <label htmlFor="call-rep" className="text-sm font-medium text-secondary">
+                Rep
+            </label>
+            {isAdding ? (
+                <form
+                    className="flex items-center gap-2"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        assign(newName);
+                    }}
+                >
+                    <input
+                        id="call-rep"
+                        autoFocus
+                        placeholder="Rep's name"
+                        className={FIELD_CLASS}
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                                e.stopPropagation();
+                                setIsAdding(false);
+                            }
+                        }}
+                    />
+                    <Button type="submit" size="sm" isLoading={pending} isDisabled={!newName.trim()}>
+                        Add
+                    </Button>
+                    <Button size="sm" color="link-gray" onClick={() => setIsAdding(false)}>
+                        Cancel
+                    </Button>
+                </form>
+            ) : (
+                <select
+                    id="call-rep"
+                    className={FIELD_CLASS}
+                    value={call.rep?.name ?? ""}
+                    disabled={pending}
+                    onChange={(e) => (e.target.value === NEW_REP ? setIsAdding(true) : assign(e.target.value))}
+                >
+                    <option value="">Unassigned</option>
+                    {unknownRep && <option value={unknownRep}>Add “{unknownRep}” as a new rep</option>}
+                    {repNames.map((name) => (
+                        <option key={name} value={name}>
+                            {name}
+                        </option>
+                    ))}
+                    <option value={NEW_REP}>New rep…</option>
+                </select>
+            )}
+            {unknownRep && (
+                <p className="text-xs text-warning-primary">The rep introduced themselves as “{unknownRep}”, who isn&apos;t one of your reps yet.</p>
+            )}
+            {error && <p className="text-sm text-error-primary">{error}</p>}
+        </section>
+    );
+}
+
 function SpeakerTime({ utterance }: { utterance: Utterance }) {
     return (
         <span className="w-24 shrink-0 text-xs text-tertiary">
@@ -160,7 +246,14 @@ function TranscriptLine({ utterance, isActive, onSeek, onEdit }: TranscriptLineP
         <div className={cx("group flex items-start gap-2 rounded-lg hover:bg-primary_hover", isActive && "bg-brand-primary")}>
             <button type="button" onClick={onSeek} className="flex flex-1 gap-4 px-3 py-2 text-left text-sm">
                 <SpeakerTime utterance={utterance} />
-                <span className="text-secondary">{utterance.text}</span>
+                <span className="text-secondary">
+                    {utterance.text}
+                    {utterance.original && (
+                        <span title={`Transcribed as: “${utterance.original}”`} className="ml-2 text-xs whitespace-nowrap text-tertiary underline decoration-dotted">
+                            Auto-corrected
+                        </span>
+                    )}
+                </span>
             </button>
             <Button
                 size="sm"

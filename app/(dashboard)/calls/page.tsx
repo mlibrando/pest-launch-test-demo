@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ClipboardCheck } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
+import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
 import type { RubricData } from "@/lib/rubrics";
 import { CallTable } from "./call-table";
@@ -38,21 +39,36 @@ export default function CallsPage() {
 }
 
 async function CallList() {
-    const calls = await prisma.call.findMany({
-        orderBy: { createdAt: "desc" },
-        select: { id: true, originalName: true, status: true, durationSec: true, errorDetail: true, createdAt: true },
-    });
-    return <CallTable calls={calls} />;
+    const company = await getActiveCompany();
+    const [calls, reps] = await Promise.all([
+        prisma.call.findMany({
+            where: { companyId: company.id },
+            orderBy: { createdAt: "desc" },
+            select: {
+                id: true,
+                originalName: true,
+                status: true,
+                durationSec: true,
+                errorDetail: true,
+                createdAt: true,
+                repName: true,
+                rep: { select: { name: true } },
+            },
+        }),
+        prisma.rep.findMany({ where: { companyId: company.id }, orderBy: { name: "asc" }, select: { name: true } }),
+    ]);
+    return <CallTable calls={calls} repNames={reps.map((r) => r.name)} />;
 }
 
 async function RubricSetsButton() {
-    const [versions, active, draft] = await Promise.all([
+    const [versions, active, draft, company] = await Promise.all([
         prisma.rubricSet.findMany({
             orderBy: { version: "desc" },
             select: { id: true, version: true, status: true, createdAt: true },
         }),
         prisma.rubricSet.findFirst({ where: { status: "ACTIVE" } }),
         prisma.rubricSet.findFirst({ where: { status: "DRAFT" }, orderBy: { version: "desc" } }),
+        getActiveCompany(),
     ]);
     const documents = await prisma.document.findMany({
         where: { id: { in: [...(active?.sourceDocumentIds ?? []), ...(draft?.sourceDocumentIds ?? [])] } },
@@ -67,5 +83,5 @@ async function RubricSetsButton() {
         documentNames: documents.filter((d) => set.sourceDocumentIds.includes(d.id)).map((d) => d.fileName),
     });
 
-    return <RubricSetsModal activeSet={active && toProps(active)} draft={draft && toProps(draft)} versions={versions} />;
+    return <RubricSetsModal activeSet={active && toProps(active)} draft={draft && toProps(draft)} versions={versions} companyName={company.name} />;
 }

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth/session";
 import { advanceCallQueue } from "@/lib/call-pipeline";
 import { AUDIO_MIME_BY_EXT, CALL_BUCKET, fileExt, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
+import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
 import { supabase } from "@/lib/supabase";
 import { errorMessage } from "@/utils/error-message";
@@ -39,8 +40,14 @@ export async function saveUploadedCalls(uploads: Pick<CallUpload, "id" | "fileNa
     await requireSession();
 
     try {
+        const company = await getActiveCompany();
         await prisma.call.createMany({
-            data: uploads.map(({ id, fileName }) => ({ id, originalName: fileName, audioPath: `${id}.${fileExt(fileName)}` })),
+            data: uploads.map(({ id, fileName }) => ({
+                id,
+                companyId: company.id,
+                originalName: fileName,
+                audioPath: `${id}.${fileExt(fileName)}`,
+            })),
         });
     } catch (err) {
         return { error: errorMessage(err) };
@@ -91,6 +98,30 @@ export async function updateUtterance(callId: string, index: number, text: strin
 
     transcript[index] = { ...transcript[index], text: text.trim() };
     await prisma.call.update({ where: { id: callId }, data: { transcript } });
+    return {};
+}
+
+/** Assigns the call's rep by name, adding them to the company's reps if they're new. An empty name unassigns. */
+export async function assignCallRep(callId: string, name: string): Promise<{ error?: string }> {
+    await requireSession();
+
+    const call = await prisma.call.findUnique({ where: { id: callId }, select: { companyId: true } });
+    if (!call) return { error: "Call not found." };
+
+    try {
+        const repName = name.trim();
+        const rep = repName
+            ? await prisma.rep.upsert({
+                  where: { companyId_name: { companyId: call.companyId, name: repName } },
+                  create: { companyId: call.companyId, name: repName },
+                  update: {},
+              })
+            : null;
+        await prisma.call.update({ where: { id: callId }, data: { repId: rep?.id ?? null } });
+    } catch (err) {
+        return { error: errorMessage(err) };
+    }
+    revalidatePath("/calls");
     return {};
 }
 

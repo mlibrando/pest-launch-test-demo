@@ -21,6 +21,7 @@ interface RubricSetsModalProps {
     activeSet: RubricSet | null;
     draft: RubricSet | null;
     versions: { id: string; version: number; status: "DRAFT" | "ACTIVE" | "ARCHIVED"; createdAt: Date }[];
+    companyName: string;
 }
 
 const STATUS_CLASS = {
@@ -29,7 +30,7 @@ const STATUS_CLASS = {
     ARCHIVED: "bg-secondary text-tertiary",
 };
 
-export function RubricSetsModal({ activeSet, draft, versions }: RubricSetsModalProps) {
+export function RubricSetsModal({ activeSet, draft, versions, companyName }: RubricSetsModalProps) {
     const [modalOpen, setModalOpen] = useState(false);
     const [reviewOpen, setReviewOpen] = useState(false);
 
@@ -78,6 +79,7 @@ export function RubricSetsModal({ activeSet, draft, versions }: RubricSetsModalP
                     version={draft.version}
                     initialData={draft.data}
                     documentNames={draft.documentNames}
+                    companyName={companyName}
                     isOpen={reviewOpen}
                     onClose={() => setReviewOpen(false)}
                     onActivated={() => {
