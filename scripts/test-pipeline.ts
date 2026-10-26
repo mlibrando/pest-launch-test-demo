@@ -341,8 +341,8 @@ async function main() {
           callId: call.id,
           criterionId: c.criterionId,
           result: c.result,
-          evidence: c.evidence,
-          utterance: c.utterance,
+          rationale: c.evidence, // T9 rewrites this script
+          source: "MODEL",
         })),
       }),
       prisma.call.update({

@@ -42,3 +42,6 @@ next-env.d.ts
 
 /generated/prisma
 /samples
+
+# scratch notes and specs
+/.scratch

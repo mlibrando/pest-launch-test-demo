@@ -39,40 +39,50 @@ model Rep {
 }
 
 model Call {
-  id            String     @id @default(uuid())
-  companyId     String
-  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  repId         String?
-  rep           Rep?       @relation(fields: [repId], references: [id], onDelete: SetNull)
-  originalName  String
-  audioPath     String     @unique
-  durationSec   Int?
-  status        CallStatus @default(UPLOADED)
-  assemblyId    String?
-  transcript    Json?      // utterances: { i, speaker, startMs, endMs, text }
-  agentSpeaker  String?    // "A" or "B"
-  category      String?    // SALES | RETENTION | SERVICE | NOT_SCORABLE
-  subtype       String?    // scheduling, billing, voicemail, wrong_number...
-  direction     String?    // INBOUND | OUTBOUND | UNKNOWN
-  repName       String?    // name the rep introduced themselves with
-  outcome      String?    // BOOKED | NOT_BOOKED | SAVED | LOST | RESOLVED | UNRESOLVED
-  outcomeReason String?
-  summary       String?
-  details       Json?      // pest type, service requested, follow-up, etc.
-  coaching      Json?      // strengths, improvements
-  score         Float?     // computed in code
-  rubricVersion String?    // which rubric produced score + criteria
-  callDate      DateTime?  // null until a real source provides it
-  failedStage   String?
-  errorDetail   String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  criteria      CriterionResult[]
+  id               String            @id @default(uuid())
+  companyId        String
+  company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  repId            String?
+  rep              Rep?              @relation(fields: [repId], references: [id], onDelete: SetNull)
+  originalName     String
+  audioPath        String            @unique
+  durationSec      Int?
+  status           CallStatus        @default(UPLOADED)
+  assemblyId       String?
+  transcript       Json? // utterances: { i, speaker, startMs, endMs, text }
+  agentSpeaker     String? // "A" or "B"
+  category         String? // SALES | RETENTION | SERVICE | NOT_SCORABLE
+  subtype          String? // scheduling, billing, voicemail, wrong_number...
+  direction        String? // INBOUND | OUTBOUND | UNKNOWN
+  repName          String? // name the rep introduced themselves with
+  outcome          String? // BOOKED | NOT_BOOKED | SAVED | LOST | RESOLVED | UNRESOLVED
+  outcomeReason    String?
+  summary          String?
+  details          Json? // pest type, service requested, follow-up, etc.
+  coaching         Json? // { strengths, improvements }: Note = { text, utterance | null }
+  score            Float? // percentage of points / maxPoints, one decimal, computed in code
+  rubricSetId      String? // which rubric set produced the analysis
+  rubricSet        RubricSet?        @relation(fields: [rubricSetId], references: [id], onDelete: SetNull)
+  scorecard        String? // rubric callType that was used
+  points           Int?
+  maxPoints        Int?
+  tier             String? // GOLD | GREEN | BELOW
+  analysisProgress Json? // { stage: classifying | assessing, attempt }
+  analysisWarnings Json? // string[]
+  analysisRaw      Json? // { models, classification, assessment, attempts, usage }
+  callDate         DateTime? // null until a real source provides it
+  failedStage      String?
+  errorDetail      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  criteria         CriterionResult[]
+  policyViolations PolicyViolation[]
 
   @@index([status])
   @@index([companyId, createdAt])
   @@index([category, outcome])
   @@index([repName])
+  @@index([rubricSetId])
 }
 
 model CriterionResult {
@@ -80,12 +90,25 @@ model CriterionResult {
   callId      String
   call        Call    @relation(fields: [callId], references: [id], onDelete: Cascade)
   criterionId String
-  result      String  // PASS | FAIL | NA
-  evidence    String?
-  utterance   Int?    // index into transcript
+  result      String // PASS | FAIL | NA
+  rationale   String?
+  quotes      Json? // Quote[]: { utterance, quote }
+  source      String // MODEL | AUTO_PASS | EXCLUDED
 
   @@unique([callId, criterionId])
   @@index([criterionId, result])
+}
+
+model PolicyViolation {
+  id          String @id @default(uuid())
+  callId      String
+  call        Call   @relation(fields: [callId], references: [id], onDelete: Cascade)
+  policyIndex Int
+  rule        String // copy of the rule text at flag time
+  explanation String
+  quotes      Json // Quote[]
+
+  @@index([callId])
 }
 
 enum RubricStatus {
@@ -107,8 +130,9 @@ model RubricSet {
   version           Int          @unique @default(autoincrement())
   status            RubricStatus @default(DRAFT)
   sourceDocumentIds String[]
-  data              Json         // save_rubric tool input: scorecards, policies, conflicts, placeholders
+  data              Json // save_rubric tool input: scorecards, policies, conflicts, placeholders
   createdAt         DateTime     @default(now())
+  calls             Call[]
 
   @@index([status])
 }
