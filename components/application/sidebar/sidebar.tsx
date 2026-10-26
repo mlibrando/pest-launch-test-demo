@@ -12,7 +12,7 @@ interface SidebarProps {
 }
 
 export const Sidebar = ({ header, userName }: SidebarProps) => (
-    <aside className="flex w-64 shrink-0 flex-col gap-6 border-r border-secondary bg-primary px-4 pt-8 pb-6">
+    <aside className="sticky top-0 flex h-dvh w-64 shrink-0 flex-col gap-6 border-r border-secondary bg-primary px-4 pt-8 pb-6">
         {header}
 
         <SidebarNav />
