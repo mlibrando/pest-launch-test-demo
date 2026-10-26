@@ -55,7 +55,7 @@ const classification = (): Classification => ({
     repName: "Sam",
     outcome: "BOOKED",
     outcomeReason: "Booked a treatment for Tuesday",
-    details: { pestType: "ants", serviceRequested: "one-time treatment", priceQuoted: "199", followUp: null },
+    details: { customerName: null, pestType: "ants", serviceRequested: "one-time treatment", priceQuoted: "199", followUp: null },
     conditions: [
         { id: "c0", applies: true, evidence: { utterance: 1, quote: "how much is a treatment" } },
         { id: "c1", applies: true, evidence: { utterance: 1, quote: "I have ants in the kitchen" } },

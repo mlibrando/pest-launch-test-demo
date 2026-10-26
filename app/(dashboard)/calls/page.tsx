@@ -6,6 +6,7 @@ import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
 import type { RubricData } from "@/lib/rubrics";
 import { CallTable } from "./call-table";
+import { CallTableSkeleton } from "./call-table-skeleton";
 import { RubricSetsModal } from "./rubric-sets-modal";
 import { UploadCallsButton } from "./upload-calls";
 
@@ -34,7 +35,10 @@ export default function CallsPage() {
                     <UploadCallsButton />
                 </div>
             </div>
-            <CallTable />
+            {/* CallTable reads the URL's `?call=`, which isn't known until request time. */}
+            <Suspense fallback={<CallTableSkeleton />}>
+                <CallTable />
+            </Suspense>
         </div>
     );
 }

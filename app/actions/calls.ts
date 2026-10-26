@@ -31,7 +31,7 @@ export type CallAnalysis = {
     outcome: string | null;
     outcomeReason: string | null;
     summary: string | null;
-    details: { pestType: string | null; serviceRequested: string | null; priceQuoted: string | null; followUp: string | null } | null;
+    details: { customerName?: string | null; pestType: string | null; serviceRequested: string | null; priceQuoted: string | null; followUp: string | null } | null;
     coaching: { strengths: Note[]; improvements: Note[] } | null;
     points: number | null;
     maxPoints: number | null;
