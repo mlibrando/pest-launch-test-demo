@@ -3,7 +3,7 @@ import { categoryForCallType, OUTCOMES_BY_CATEGORY, type Utterance } from "@/lib
 import { verifyQuote } from "@/lib/evidence";
 import type { RubricData } from "@/lib/rubrics";
 
-export type Condition = { id: string; appliesWhen: string; criteria: { callType: string; criterionId: string }[] };
+type Condition = { id: string; appliesWhen: string; criteria: { callType: string; criterionId: string }[] };
 
 export function conditionsFor(rubric: RubricData): Condition[] {
     const byText = new Map<string, Condition>();

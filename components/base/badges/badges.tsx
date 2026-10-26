@@ -4,7 +4,7 @@ import type { MouseEventHandler, ReactNode } from "react";
 import { X as CloseX } from "@untitledui/icons";
 import { Dot } from "@/components/foundations/dot-icon";
 import { cx } from "@/utils/cx";
-import type { BadgeColors, BadgeTypeToColorMap, BadgeTypes, FlagTypes, IconComponentType, Sizes } from "./badge-types";
+import type { BadgeColors, BadgeTypeToColorMap, BadgeTypes, IconComponentType, Sizes } from "./badge-types";
 import { badgeTypes } from "./badge-types";
 
 export const filledColors: Record<BadgeColors, { root: string; addon: string; addonButton: string }> = {
@@ -258,92 +258,6 @@ export const BadgeWithIcon = <T extends BadgeTypes>(props: BadgeWithIconProps<T>
             {IconLeading && <IconLeading className={cx(colors.styles[color].addon, "size-3 stroke-3")} />}
             {children}
             {IconTrailing && <IconTrailing className={cx(colors.styles[color].addon, "size-3 stroke-3")} />}
-        </span>
-    );
-};
-
-interface BadgeWithFlagProps<T extends BadgeTypes> {
-    /** The shape and treatment of the badge: `pill-color` is fully rounded, `color` is a rounded rectangle, and `modern` is a white badge with a border and a subtle shadow. */
-    type?: T;
-    /** Controls the gap, padding, and font size of the badge. */
-    size?: Sizes;
-    /** The ISO country code of the flag shown before the label. It is loaded as a circular SVG from the Untitled UI flag CDN and also used for the image alt text. */
-    flag?: FlagTypes;
-    /** The color palette used for the badge background, text, and ring. The `modern` type only supports `gray`. */
-    color?: BadgeTypeToColorMap<typeof withPillTypes>[T];
-    /** The content shown after the flag, usually a country or region name. */
-    children: ReactNode;
-}
-
-export const BadgeWithFlag = <T extends BadgeTypes>(props: BadgeWithFlagProps<T>) => {
-    const { size = "md", color = "gray", flag = "AU", type = "pill-color", children } = props;
-
-    const colors = withPillTypes[type];
-
-    const pillSizes = {
-        sm: "gap-1 py-0.5 pl-0.75 pr-2 text-xs font-medium",
-        md: "gap-1.5 py-0.5 pl-1 pr-2.5 text-sm font-medium",
-        lg: "gap-1.5 py-1 pl-1.5 pr-3 text-sm font-medium",
-    };
-    const badgeSizes = {
-        sm: "gap-1 py-0.5 pl-1 pr-1.5 text-xs font-medium",
-        md: "gap-1.5 py-0.5 pl-1.5 pr-2 text-sm font-medium",
-        lg: "gap-1.5 py-1 pl-2 pr-2.5 text-sm font-medium rounded-lg",
-    };
-
-    const sizes = {
-        [badgeTypes.pillColor]: pillSizes,
-        [badgeTypes.badgeColor]: badgeSizes,
-        [badgeTypes.badgeModern]: badgeSizes,
-    };
-
-    return (
-        <span className={cx(colors.common, sizes[type][size], colors.styles[color].root)}>
-            <img src={`https://www.untitledui.com/images/flags/${flag}.svg`} className="size-4 max-w-none rounded-full" alt={`${flag} flag`} />
-            {children}
-        </span>
-    );
-};
-
-interface BadgeWithImageProps<T extends BadgeTypes> {
-    /** The shape and treatment of the badge: `pill-color` is fully rounded, `color` is a rounded rectangle, and `modern` is a white badge with a border and a subtle shadow. */
-    type?: T;
-    /** Controls the gap, padding, and font size of the badge. */
-    size?: Sizes;
-    /** The source URL of the circular image rendered before the label, such as an avatar or a logo. */
-    imgSrc: string;
-    /** The color palette used for the badge background, text, and ring. The `modern` type only supports `gray`. */
-    color?: BadgeTypeToColorMap<typeof withPillTypes>[T];
-    /** The content shown after the image, usually a name or a short label. */
-    children: ReactNode;
-}
-
-export const BadgeWithImage = <T extends BadgeTypes>(props: BadgeWithImageProps<T>) => {
-    const { size = "md", color = "gray", type = "pill-color", imgSrc, children } = props;
-
-    const colors = withPillTypes[type];
-
-    const pillSizes = {
-        sm: "gap-1 py-0.5 pl-0.75 pr-2 text-xs font-medium",
-        md: "gap-1.5 py-0.5 pl-1 pr-2.5 text-sm font-medium",
-        lg: "gap-1.5 py-1 pl-1.5 pr-3 text-sm font-medium",
-    };
-    const badgeSizes = {
-        sm: "gap-1 py-0.5 pl-1 pr-1.5 text-xs font-medium",
-        md: "gap-1.5 py-0.5 pl-1.5 pr-2 text-sm font-medium",
-        lg: "gap-1.5 py-1 pl-2 pr-2.5 text-sm font-medium rounded-lg",
-    };
-
-    const sizes = {
-        [badgeTypes.pillColor]: pillSizes,
-        [badgeTypes.badgeColor]: badgeSizes,
-        [badgeTypes.badgeModern]: badgeSizes,
-    };
-
-    return (
-        <span className={cx(colors.common, sizes[type][size], colors.styles[color].root)}>
-            <img src={imgSrc} className="size-4 max-w-none rounded-full" alt="Badge image" />
-            {children}
         </span>
     );
 };

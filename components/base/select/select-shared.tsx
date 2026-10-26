@@ -32,6 +32,11 @@ export interface CommonProps {
     placeholder?: string;
     /** Whether to hide the required indicator from the label. */
     hideRequiredIndicator?: boolean;
+    /**
+     * `ghost` drops the trigger's border, background and shadow and bolds the value, for selects that sit inline in navigation.
+     * @default "default"
+     */
+    variant?: "default" | "ghost";
 }
 
 export const sizes = {
@@ -44,6 +49,11 @@ export const sizes = {
     },
     md: { root: "py-2 px-3 gap-2 *:data-icon:size-5", withIcon: "", text: "text-md", textContainer: "gap-x-1.5", shortcut: "pr-2.5" },
     lg: { root: "py-2.5 px-3.5 gap-2 *:data-icon:size-5", withIcon: "", text: "text-md", textContainer: "gap-x-1.5", shortcut: "pr-3" },
+};
+
+export const variants = {
+    default: { trigger: "bg-primary shadow-xs ring-1 ring-primary ring-inset", focused: "ring-2 ring-brand", text: "font-medium" },
+    ghost: { trigger: "hover:bg-primary_hover focus-visible:ring-2 focus-visible:ring-brand", focused: "", text: "font-semibold" },
 };
 
 export const SelectContext = createContext<{ size: "sm" | "md" | "lg" }>({ size: "md" });

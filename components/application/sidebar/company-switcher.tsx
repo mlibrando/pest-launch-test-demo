@@ -15,11 +15,12 @@ export function CompanySwitcher({ companies, activeId }: CompanySwitcherProps) {
     const [pending, startTransition] = useTransition();
 
     return (
-        <div className="flex items-center gap-3 px-2 py-1">
+        <div className="flex items-center gap-1 px-2 py-1">
             <Avatar icon={ShieldTick} className="rounded-lg bg-brand-solid text-white" />
             <Select
                 aria-label="Company"
                 size="sm"
+                variant="ghost"
                 value={activeId}
                 isDisabled={pending}
                 onChange={(key) => key && startTransition(() => setActiveCompany(String(key)))}
