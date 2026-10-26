@@ -48,11 +48,13 @@ const transcript: Utterance[] = [
 ];
 
 const classification = (): Classification => ({
+    directionEvidence: { utterance: 0, quote: "Thanks for calling Acme Pest" },
+    direction: "INBOUND",
+    agentEvidence: { utterance: 0, quote: "this is Sam" },
     agentSpeaker: "A",
+    repName: "Sam",
     scorecard: "Sales Calls",
     subtype: "new_quote",
-    direction: "INBOUND",
-    repName: "Sam",
     outcome: "BOOKED",
     outcomeReason: "Booked a treatment for Tuesday",
     details: { customerName: null, pestType: "ants", serviceRequested: "one-time treatment", priceQuoted: "199", followUp: null },
@@ -160,6 +162,60 @@ describe("checkClassification", () => {
         assert.deepEqual(check({ ...classification(), agentSpeaker: "C" }), [
             `agentSpeaker "C" is not a speaker in the transcript; use one of A, B`,
         ]);
+    });
+
+    it("rejects agentEvidence spoken by the other speaker", () => {
+        assert.deepEqual(check({ ...classification(), agentEvidence: { utterance: 1, quote: "I have ants" } }), [
+            "agentEvidence: utterance 1 is spoken by Speaker B, not Speaker A; quote only Speaker A's words; if that line is the rep's, agentSpeaker is wrong",
+        ]);
+    });
+
+    it("requires agentEvidence unless the call is NOT_SCORABLE", () => {
+        assert.deepEqual(check({ ...classification(), agentEvidence: null }), [
+            "agentEvidence is missing; quote a line that shows which speaker is the rep",
+        ]);
+        assert.deepEqual(check({ ...classification(), agentEvidence: null, scorecard: "NOT_SCORABLE", outcome: null }), []);
+    });
+
+    it("rejects an outbound call scored against the customer, who answered first", () => {
+        const outbound: Utterance[] = [
+            { i: 0, speaker: "A", startMs: 0, endMs: 500, text: "Hi there." },
+            { i: 1, speaker: "B", startMs: 500, endMs: 3000, text: "Hey, this is Griffin from Acme Pest. I was looking to schedule your follow-up." },
+            { i: 2, speaker: "A", startMs: 3000, endMs: 4000, text: "Okay. When would you like to do it?" },
+        ];
+        const c = {
+            ...classification(),
+            directionEvidence: { utterance: 1, quote: "I was looking to schedule your follow-up" },
+            direction: "OUTBOUND" as const,
+            repName: "Griffin",
+            agentEvidence: null,
+            scorecard: "NOT_SCORABLE",
+            outcome: null,
+        };
+        c.conditions = c.conditions.map((cond) => ({ ...cond, applies: false, evidence: null }));
+        assert.deepEqual(checkClassification(c, outbound, rubric), [
+            `repName "Griffin" is only said by Speaker B, never by agentSpeaker A; the rep is the speaker who introduces themselves`,
+        ]);
+        assert.deepEqual(checkClassification({ ...c, agentSpeaker: "B" }, outbound, rubric), []);
+    });
+
+    it("requires directionEvidence unless direction is UNKNOWN", () => {
+        assert.deepEqual(check({ ...classification(), directionEvidence: null }), [
+            "directionEvidence is missing; quote the line that shows the call is INBOUND, or set direction to UNKNOWN",
+        ]);
+        assert.deepEqual(check({ ...classification(), directionEvidence: null, direction: "UNKNOWN" }), []);
+    });
+
+    it("rejects directionEvidence that is not in the transcript", () => {
+        const problems = check({ ...classification(), directionEvidence: { utterance: 0, quote: "returning your call today" } });
+        assert.equal(problems.length, 1);
+        assert.match(problems[0], /^directionEvidence: /);
+    });
+
+    it("allows the customer to also say the rep's name", () => {
+        const t = [...transcript];
+        t[1] = { ...t[1], text: "Hi Sam, I have ants in the kitchen. How much is a treatment?" };
+        assert.deepEqual(checkClassification(classification(), t, rubric), []);
     });
 
     it("rejects an outcome that is not valid for the category", () => {

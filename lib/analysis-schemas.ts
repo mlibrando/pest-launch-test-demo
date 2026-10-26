@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { categoryForCallType, OUTCOMES_BY_CATEGORY, type Utterance } from "@/lib/calls";
-import { verifyQuote } from "@/lib/evidence";
+import { categoryForCallType, OUTCOMES_BY_CATEGORY, type Quote, type Utterance } from "@/lib/calls";
+import { relocateQuote, speakersWhoSay, verifyQuote } from "@/lib/evidence";
 import type { RubricData } from "@/lib/rubrics";
 
 type Condition = { id: string; appliesWhen: string; criteria: { callType: string; criterionId: string }[] };
@@ -40,11 +40,18 @@ const noteSchema = z.object({
 
 export function classificationSchema(rubric: RubricData) {
     return z.object({
+        // Evidence comes before each decision so the model reasons before it decides.
+        directionEvidence: quoteSchema
+            .nullable()
+            .describe("The line that shows who placed the call, such as why the rep says they're calling; null only when direction is UNKNOWN"),
+        direction: z.enum(["INBOUND", "OUTBOUND", "UNKNOWN"]),
+        agentEvidence: quoteSchema
+            .nullable()
+            .describe("A line only the rep would say, such as their self-introduction or the company greeting; null only for NOT_SCORABLE calls"),
         agentSpeaker: z.string(),
+        repName: z.string().nullable(),
         scorecard: z.enum([...rubric.scorecards.map((s) => s.callType), NOT_SCORABLE]),
         subtype: z.string().describe("snake_case label for what the call is about, e.g. new_quote, scheduling, billing, cancellation, voicemail"),
-        direction: z.enum(["INBOUND", "OUTBOUND", "UNKNOWN"]),
-        repName: z.string().nullable(),
         outcome: z.enum(ALL_OUTCOMES).nullable(),
         outcomeReason: z.string().nullable(),
         details: z.object({
@@ -101,11 +108,49 @@ function answeredOnce(label: string, answered: string[], expected: string[]): st
     ];
 }
 
+/** Fixes quotes cited to the wrong line, so a right quote with a wrong index doesn't cost a retry. */
+export function relocateClassificationQuotes(c: Classification, transcript: Utterance[]): Classification {
+    return {
+        ...c,
+        directionEvidence: c.directionEvidence && relocateQuote(transcript, c.directionEvidence),
+        agentEvidence: c.agentEvidence && relocateQuote(transcript, c.agentEvidence, c.agentSpeaker),
+        conditions: c.conditions.map((cond) => ({ ...cond, evidence: cond.evidence && relocateQuote(transcript, cond.evidence) })),
+    };
+}
+
+export function relocateAssessmentQuotes(a: Assessment, transcript: Utterance[], agentSpeaker: string): Assessment {
+    const relocate = <Q extends Quote>(quotes: Q[]) => quotes.map((q) => relocateQuote(transcript, q, agentSpeaker));
+    return {
+        ...a,
+        criteria: a.criteria.map((c) => ({ ...c, evidence: relocate(c.evidence) })),
+        ...(a.policyViolations && { policyViolations: a.policyViolations.map((v) => ({ ...v, evidence: relocate(v.evidence) })) }),
+    };
+}
+
 export function checkClassification(c: Classification, transcript: Utterance[], rubric: RubricData): string[] {
     const problems: string[] = [];
     const speakers = [...new Set(transcript.map((u) => u.speaker))];
+    if (c.directionEvidence) {
+        const problem = verifyQuote(transcript, c.directionEvidence);
+        if (problem) problems.push(`directionEvidence: ${problem}`);
+    } else if (c.direction !== "UNKNOWN") {
+        problems.push(`directionEvidence is missing; quote the line that shows the call is ${c.direction}, or set direction to UNKNOWN`);
+    }
     if (!speakers.includes(c.agentSpeaker)) {
         problems.push(`agentSpeaker "${c.agentSpeaker}" is not a speaker in the transcript; use one of ${speakers.join(", ")}`);
+    } else if (c.agentEvidence) {
+        const problem = verifyQuote(transcript, c.agentEvidence, c.agentSpeaker);
+        if (problem) problems.push(`agentEvidence: ${problem}; if that line is the rep's, agentSpeaker is wrong`);
+    } else if (c.scorecard !== NOT_SCORABLE) {
+        problems.push("agentEvidence is missing; quote a line that shows which speaker is the rep");
+    }
+    // The rep says their own name when introducing themselves; the customer may also say it back, so only a name
+    // the agentSpeaker never says is a contradiction.
+    const namedBy = c.repName ? speakersWhoSay(transcript, c.repName) : [];
+    if (speakers.includes(c.agentSpeaker) && namedBy.length && !namedBy.includes(c.agentSpeaker)) {
+        problems.push(
+            `repName "${c.repName}" is only said by Speaker ${namedBy.join(", ")}, never by agentSpeaker ${c.agentSpeaker}; the rep is the speaker who introduces themselves`,
+        );
     }
     if (c.outcome !== null) {
         if (c.scorecard === NOT_SCORABLE) {

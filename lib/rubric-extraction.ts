@@ -13,6 +13,8 @@ Rules:
 - Criteria must come from the documents' scorecards or step lists. Do not invent criteria.
 - For each criterion, write \`qualityBar\` from what the manual says a good execution looks like, so a grader can tell a weak attempt from a real one. Keep it to 1-2 sentences.
 - If a criterion only applies in some situations, fill \`appliesWhen\` and \`ifNotApplicable\` using the manual's own rule (e.g. objection steps auto-pass when no objection is raised).
+- \`appliesWhen\` is the situation in which the criterion IS graded, written as a statement about the call (e.g. "The customer raises an objection."), never when it is skipped or what the manual says.
+- Criteria that depend on the same situation must use the exact same \`appliesWhen\` text, so the situation is judged once per call.
 - Capture hard policy limits that aren't scored (e.g. discount caps, max waived months) as \`policies\`.
 - If the documents contain unfilled placeholders like "(Your Business Name)", list them in \`placeholders\`.
 - Anything ambiguous goes in \`conflicts\` with a short question for a human reviewer. Don't guess.`;

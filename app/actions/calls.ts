@@ -123,6 +123,7 @@ export async function syncCalls() {
                 score: true,
                 tier: true,
                 outcome: true,
+                direction: true,
                 analysisProgress: true,
             },
         }),

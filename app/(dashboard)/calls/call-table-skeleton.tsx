@@ -2,12 +2,13 @@ import { ArrowDown, ArrowUp, ChevronSelectorVertical } from "@untitledui/icons";
 import { Skeleton } from "@/components/base/skeleton/skeleton";
 import { cx } from "@/utils/cx";
 
-export type SortKey = "name" | "rep" | "outcome" | "score" | "duration" | "uploaded";
+export type SortKey = "name" | "rep" | "direction" | "outcome" | "score" | "duration" | "uploaded";
 export type Sort = { key: SortKey; desc: boolean };
 
 const COLUMNS: { key: SortKey; label: string }[] = [
     { key: "name", label: "Recording" },
     { key: "rep", label: "Rep" },
+    { key: "direction", label: "Direction" },
     { key: "outcome", label: "Outcome" },
     { key: "score", label: "Score" },
     { key: "duration", label: "Duration" },
@@ -74,6 +75,9 @@ export function CallTableSkeleton() {
                             </td>
                             <td className="px-6 py-4">
                                 <Skeleton className="h-4 w-14" />
+                            </td>
+                            <td className="px-6 py-4">
+                                <Skeleton className="h-4 w-20" />
                             </td>
                             <td className="px-6 py-4">
                                 <Skeleton className="h-5 w-20 rounded-full" />

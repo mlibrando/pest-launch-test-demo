@@ -25,8 +25,8 @@ interface RubricSetsModalProps {
 }
 
 const STATUS_CLASS = {
-    DRAFT: "bg-brand-secondary text-brand-secondary",
-    ACTIVE: "bg-success-secondary text-success-primary",
+    DRAFT: "bg-utility-brand-50 text-utility-brand-700",
+    ACTIVE: "bg-utility-green-50 text-utility-green-700",
     ARCHIVED: "bg-secondary text-tertiary",
 };
 

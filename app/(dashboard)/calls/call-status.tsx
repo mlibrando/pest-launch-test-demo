@@ -28,6 +28,7 @@ export type CallRow = {
     score: number | null;
     tier: Tier | null;
     outcome: string | null;
+    direction: string | null;
     analysisProgress: AnalysisProgress | null;
 };
 
@@ -35,11 +36,11 @@ export const BADGE_CLASS = "inline-flex items-center gap-1 rounded-full px-2 py-
 
 const STATUS: Record<CallStatus, { label: string; className: string }> = {
     UPLOADED: { label: "Queued", className: "bg-secondary text-tertiary" },
-    TRANSCRIBING: { label: "Transcribing", className: "bg-brand-secondary text-brand-secondary" },
-    TRANSCRIBED: { label: "Transcribed", className: "bg-success-secondary text-success-primary" },
-    ANALYZING: { label: "Analyzing", className: "bg-brand-secondary text-brand-secondary" },
-    DONE: { label: "Done", className: "bg-success-secondary text-success-primary" },
-    FAILED: { label: "Failed", className: "bg-error-secondary text-error-primary" },
+    TRANSCRIBING: { label: "Transcribing", className: "bg-utility-brand-50 text-utility-brand-700" },
+    TRANSCRIBED: { label: "Transcribed", className: "bg-utility-green-50 text-utility-green-700" },
+    ANALYZING: { label: "Analyzing", className: "bg-utility-brand-50 text-utility-brand-700" },
+    DONE: { label: "Done", className: "bg-utility-green-50 text-utility-green-700" },
+    FAILED: { label: "Failed", className: "bg-utility-red-50 text-utility-red-700" },
 };
 
 interface StatusBadgeProps {
@@ -61,9 +62,9 @@ export function StatusBadge({ status, queuePosition, attempt }: StatusBadgeProps
 }
 
 const TIER: Record<Tier, { label: string; className: string }> = {
-    GOLD: { label: "Gold", className: "bg-warning-secondary text-warning-primary" },
-    GREEN: { label: "Green", className: "bg-success-secondary text-success-primary" },
-    BELOW: { label: "Below", className: "bg-error-secondary text-error-primary" },
+    GOLD: { label: "Gold", className: "bg-utility-yellow-50 text-utility-yellow-700" },
+    GREEN: { label: "Green", className: "bg-utility-green-50 text-utility-green-700" },
+    BELOW: { label: "Below", className: "bg-utility-red-50 text-utility-red-700" },
 };
 
 export function TierBadge({ tier }: { tier: Tier }) {
@@ -73,7 +74,7 @@ export function TierBadge({ tier }: { tier: Tier }) {
 export function OutcomeBadge({ outcome }: { outcome: string }) {
     const missed = MISSED_OUTCOMES.includes(outcome);
     return (
-        <span className={cx(BADGE_CLASS, missed ? "bg-error-secondary text-error-primary" : "bg-success-secondary text-success-primary")}>
+        <span className={cx(BADGE_CLASS, missed ? "bg-utility-red-50 text-utility-red-700" : "bg-utility-green-50 text-utility-green-700")}>
             {humanize(outcome)}
         </span>
     );
