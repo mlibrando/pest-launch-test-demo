@@ -36,7 +36,7 @@ export function CallTableHead({ sort, onSort }: CallTableHeadProps) {
                             <button
                                 type="button"
                                 disabled={!onSort}
-                                onClick={() => onSort?.(key)}
+                                onClick={onSort && (() => onSort(key))}
                                 className={cx(
                                     "group/sort inline-flex items-center gap-1 rounded-sm outline-focus-ring enabled:cursor-pointer enabled:hover:text-secondary focus-visible:outline-2",
                                     active && "text-secondary",
