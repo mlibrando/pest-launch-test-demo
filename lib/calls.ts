@@ -16,6 +16,9 @@ export const fileExt = (name: string) => name.split(".").pop()?.toLowerCase() ??
 export type Utterance = { i: number; speaker: string; startMs: number; endMs: number; text: string; original?: string };
 export type Quote = { utterance: number; quote: string };
 
+/** "NOT_BOOKED" → "Not booked" */
+export const humanize = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll("_", " ");
+
 export const formatSeconds = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
 export const CATEGORIES = ["SALES", "RETENTION", "SERVICE", "NOT_SCORABLE"] as const;

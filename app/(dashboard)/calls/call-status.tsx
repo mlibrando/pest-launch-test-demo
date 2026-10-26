@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { RefreshCcw01, Trash01 } from "@untitledui/icons";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteCall, reanalyzeCall, retryCall } from "@/app/actions/calls";
 import { ConfirmDialog } from "@/components/application/confirm-dialog/confirm-dialog";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { Button } from "@/components/base/buttons/button";
 import type { CallStatus } from "@/generated/prisma/client";
-import { CALLS_QUERY_KEY, MAX_ATTEMPTS, type AnalysisProgress, type Tier } from "@/lib/calls";
+import { CALLS_QUERY_KEY, humanize, MAX_ATTEMPTS, type AnalysisProgress, type Tier } from "@/lib/calls";
+import { MISSED_OUTCOMES } from "@/lib/overview";
 import { cx } from "@/utils/cx";
 
 export type CallRow = {
@@ -24,7 +25,9 @@ export type CallRow = {
     scorecard: string | null;
     points: number | null;
     maxPoints: number | null;
+    score: number | null;
     tier: Tier | null;
+    outcome: string | null;
     analysisProgress: AnalysisProgress | null;
 };
 
@@ -65,6 +68,15 @@ const TIER: Record<Tier, { label: string; className: string }> = {
 
 export function TierBadge({ tier }: { tier: Tier }) {
     return <span className={cx(BADGE_CLASS, TIER[tier].className)}>{TIER[tier].label}</span>;
+}
+
+export function OutcomeBadge({ outcome }: { outcome: string }) {
+    const missed = MISSED_OUTCOMES.includes(outcome);
+    return (
+        <span className={cx(BADGE_CLASS, missed ? "bg-error-secondary text-error-primary" : "bg-success-secondary text-success-primary")}>
+            {humanize(outcome)}
+        </span>
+    );
 }
 
 export function RetryButton({ callId }: { callId: string }) {
@@ -109,20 +121,27 @@ export function ReanalyzeButton({ callId }: { callId: string }) {
     );
 }
 
+export const DELETE_CALL_KEY = [...CALLS_QUERY_KEY, "delete"];
+
 export function DeleteCallButton({ call, iconOnly }: { call: CallRow; iconOnly?: boolean }) {
     const queryClient = useQueryClient();
     const [confirming, setConfirming] = useState(false);
-    const [error, setError] = useState<string>();
-    const [pending, startTransition] = useTransition();
-
-    const remove = () =>
-        startTransition(async () => {
-            const result = await deleteCall(call.id);
-            setError(result.error);
-            if (result.error) return;
-            await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+    const mutation = useMutation({
+        mutationKey: DELETE_CALL_KEY,
+        mutationFn: async (id: string) => {
+            const { error } = await deleteCall(id);
+            if (error) throw new Error(error);
+        },
+        // Stays pending until the list refetches, so the row keeps its deleting state until it's gone.
+        onSuccess: () => {
             setConfirming(false);
-        });
+            return queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+        },
+    });
+    const cancel = () => {
+        setConfirming(false);
+        mutation.reset();
+    };
 
     return (
         <>
@@ -130,6 +149,7 @@ export function DeleteCallButton({ call, iconOnly }: { call: CallRow; iconOnly?:
                 size="sm"
                 color={iconOnly ? "tertiary" : "secondary-destructive"}
                 iconLeading={<Trash01 data-icon />}
+                isLoading={mutation.isPending}
                 aria-label={iconOnly ? `Delete ${call.originalName}` : undefined}
                 onClick={() => setConfirming(true)}
             >
@@ -138,16 +158,17 @@ export function DeleteCallButton({ call, iconOnly }: { call: CallRow; iconOnly?:
             <ConfirmDialog
                 isOpen={confirming}
                 title="Delete this call?"
-                confirmLabel={pending ? "Deleting…" : "Delete"}
+                confirmLabel="Delete"
                 isDestructive
-                onConfirm={remove}
-                onCancel={() => setConfirming(false)}
+                isPending={mutation.isPending}
+                onConfirm={() => mutation.mutate(call.id)}
+                onCancel={cancel}
             >
                 <p>
                     <span className="font-semibold text-primary">{call.originalName}</span>, its recording and transcript will be permanently
                     deleted.
                 </p>
-                {error && <p className="mt-2 text-error-primary">{error}</p>}
+                {mutation.error && <p className="mt-2 text-error-primary">{mutation.error.message}</p>}
             </ConfirmDialog>
         </>
     );

@@ -1,17 +1,56 @@
+import { ArrowDown, ArrowUp, ChevronSelectorVertical } from "@untitledui/icons";
 import { Skeleton } from "@/components/base/skeleton/skeleton";
 import { cx } from "@/utils/cx";
 
+export type SortKey = "name" | "rep" | "outcome" | "score" | "duration" | "uploaded";
+export type Sort = { key: SortKey; desc: boolean };
+
+const COLUMNS: { key: SortKey; label: string }[] = [
+    { key: "name", label: "Recording" },
+    { key: "rep", label: "Rep" },
+    { key: "outcome", label: "Outcome" },
+    { key: "score", label: "Score" },
+    { key: "duration", label: "Duration" },
+    { key: "uploaded", label: "Uploaded" },
+];
+
+interface CallTableHeadProps {
+    sort?: Sort;
+    onSort?: (key: SortKey) => void;
+}
+
 /** Shared by the table and its skeleton, so the placeholder columns line up with the real ones. */
-export function CallTableHead() {
+export function CallTableHead({ sort, onSort }: CallTableHeadProps) {
     return (
         <thead className="border-b border-secondary text-xs text-tertiary">
             <tr>
-                <th className="px-6 py-3 font-medium">Recording</th>
-                <th className="px-6 py-3 font-medium">Rep</th>
-                <th className="px-6 py-3 font-medium">Status</th>
-                <th className="px-6 py-3 font-medium">Score</th>
-                <th className="px-6 py-3 font-medium">Duration</th>
-                <th className="px-6 py-3 font-medium">Uploaded</th>
+                {COLUMNS.map(({ key, label }) => {
+                    const active = sort?.key === key;
+                    const Icon = !active ? ChevronSelectorVertical : sort.desc ? ArrowDown : ArrowUp;
+                    return (
+                        <th
+                            key={key}
+                            aria-sort={active ? (sort.desc ? "descending" : "ascending") : undefined}
+                            className="px-6 py-3 font-medium"
+                        >
+                            <button
+                                type="button"
+                                disabled={!onSort}
+                                onClick={onSort && (() => onSort(key))}
+                                className={cx(
+                                    "group/sort inline-flex items-center gap-1 rounded-sm outline-focus-ring enabled:cursor-pointer enabled:hover:text-secondary focus-visible:outline-2",
+                                    active && "text-secondary",
+                                )}
+                            >
+                                {label}
+                                <Icon
+                                    aria-hidden
+                                    className={cx("size-3.5", !active && "text-fg-quaternary opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100")}
+                                />
+                            </button>
+                        </th>
+                    );
+                })}
                 <th className="px-6 py-3" />
             </tr>
         </thead>
@@ -37,7 +76,7 @@ export function CallTableSkeleton() {
                                 <Skeleton className="h-4 w-14" />
                             </td>
                             <td className="px-6 py-4">
-                                <Skeleton className="h-5 w-14 rounded-full" />
+                                <Skeleton className="h-5 w-20 rounded-full" />
                             </td>
                             <td className="px-6 py-4">
                                 <Skeleton className="h-5 w-24" />
@@ -50,7 +89,7 @@ export function CallTableSkeleton() {
                             </td>
                             <td className="px-6 py-4">
                                 {/* Button-sized, so the rows are as tall as the real ones with their delete button. */}
-                                <Skeleton className="ml-auto size-9 rounded-lg" />
+                                <div className="size-9" />
                             </td>
                         </tr>
                     ))}

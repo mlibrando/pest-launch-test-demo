@@ -6,7 +6,7 @@ import type { UseQueryResult } from "@tanstack/react-query";
 import { Button as AriaButton, Disclosure, DisclosurePanel, Heading } from "react-aria-components";
 import type { CallAnalysis } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
-import { ANALYSIS_FAILED_MESSAGE, type Quote } from "@/lib/calls";
+import { ANALYSIS_FAILED_MESSAGE, humanize, type Quote } from "@/lib/calls";
 import { cx } from "@/utils/cx";
 import { BADGE_CLASS, RetryButton, TierBadge, type CallRow } from "./call-status";
 
@@ -20,9 +20,6 @@ const RESULT: Record<string, { label: string; className: string }> = {
 };
 
 const resultKey = (c: Criterion) => (c.source === "AUTO_PASS" ? "AUTO_PASS" : c.result);
-
-/** "NOT_BOOKED" → "Not booked" */
-const humanize = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll("_", " ");
 
 interface CallAnalysisSectionProps {
     call: CallRow;
