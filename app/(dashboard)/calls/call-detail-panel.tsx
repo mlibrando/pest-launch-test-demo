@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Edit05 } from "@untitledui/icons";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { assignCallRep, getCallAudioUrl, getCallTranscript, updateUtterance } from "@/app/actions/calls";
+import type { Key } from "react-aria-components";
+import { assignCallRep, getCallAnalysis, getCallAudioUrl, getCallTranscript, updateUtterance } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-panel";
+import { Tabs } from "@/components/application/tabs/tabs";
 import { Button } from "@/components/base/buttons/button";
+import { Select } from "@/components/base/select/select";
 import { formatSeconds, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
 import { cx } from "@/utils/cx";
 import { CallAnalysisSection } from "./call-analysis";
@@ -19,6 +22,7 @@ const FIELD_CLASS =
     "w-full rounded-lg bg-primary px-3 py-2 text-sm text-primary shadow-xs ring-1 ring-primary outline-none ring-inset focus:ring-2 focus:ring-brand";
 
 const NEW_REP = "__new";
+const UNASSIGNED = "__none";
 
 interface CallDetailPanelProps {
     call: CallRow;
@@ -31,6 +35,7 @@ export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: Ca
     const queryClient = useQueryClient();
     const [currentMs, setCurrentMs] = useState(0);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
+    const [tab, setTab] = useState<Key>(call.status === "DONE" ? "analysis" : "transcript");
     const audioRef = useRef<HTMLAudioElement>(null);
     const activeRef = useRef<HTMLDivElement>(null);
 
@@ -56,12 +61,26 @@ export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: Ca
         placeholderData: keepPreviousData,
     });
 
+    const analysisQuery = useQuery({
+        queryKey: ["call-analysis", call.id],
+        queryFn: () => getCallAnalysis(call.id),
+        enabled: call.status === "DONE",
+        staleTime: Infinity,
+        gcTime: Infinity,
+    });
+
+    // A re-analysis replaces the results, so drop the cached ones as soon as the call leaves DONE.
+    useEffect(() => {
+        if (call.status !== "DONE") queryClient.removeQueries({ queryKey: ["call-analysis", call.id] });
+    }, [call.id, call.status, queryClient]);
+
+    const isLoading = audio.isPending || transcriptQuery.isPending || analysisQuery.isLoading;
     const transcript = transcriptQuery.data;
     const activeIndex = transcript?.findLastIndex((u) => u.startMs <= currentMs) ?? -1;
 
     useEffect(() => {
         activeRef.current?.scrollIntoView({ block: "nearest" });
-    }, [activeIndex]);
+    }, [activeIndex, tab]);
 
     const seek = (utteranceIndex: number) => {
         const u = transcript?.[utteranceIndex];
@@ -103,53 +122,64 @@ export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: Ca
 
             <RepField call={call} repNames={repNames} />
 
-            {audio.isPending ? (
-                <LoadingIndicator label="Loading recording…" className="py-3 text-sm text-tertiary" />
-            ) : audio.isError ? (
-                <p className="text-sm text-error-primary">{audio.error.message}</p>
+            {isLoading ? (
+                <LoadingIndicator label="Loading call…" className="py-3 text-sm text-tertiary" />
             ) : (
-                <audio
-                    ref={audioRef}
-                    src={audio.data}
-                    controls
-                    className="w-full"
-                    onTimeUpdate={(e) => setCurrentMs(e.currentTarget.currentTime * 1000)}
-                />
-            )}
-
-            <CallAnalysisSection call={call} hasActiveRubric={hasActiveRubric} onSeek={seek} />
-
-            <section className="flex flex-col gap-1">
-                <h3 className="mb-2 text-md font-semibold text-primary">Transcript</h3>
-                {transcriptQuery.isPending ? (
-                    <LoadingIndicator label="Loading transcript…" className="text-sm text-tertiary" />
-                ) : transcript ? (
-                    transcript.map((u, i) => (
-                        <div key={u.i} ref={i === activeIndex ? activeRef : undefined}>
-                            {editingIndex === i ? (
-                                <EditLine
-                                    callId={call.id}
-                                    utterance={u}
-                                    index={i}
-                                    onSaved={(text) => saveLine(i, text)}
-                                    onCancel={() => setEditingIndex(null)}
-                                />
-                            ) : (
-                                <TranscriptLine
-                                    utterance={u}
-                                    isActive={i === activeIndex}
-                                    onSeek={() => seek(i)}
-                                    onEdit={() => setEditingIndex(i)}
-                                />
-                            )}
+                <>
+                    {audio.isError ? (
+                        <p className="text-sm text-error-primary">{audio.error.message}</p>
+                    ) : (
+                        // The negative margin and padding cancel out, but cover the body's top padding once pinned. z-20 clears the tabs' z-10.
+                        <div className="sticky top-0 z-20 -mt-5 bg-primary pt-5 pb-2">
+                            <audio
+                                ref={audioRef}
+                                src={audio.data}
+                                controls
+                                className="w-full"
+                                onTimeUpdate={(e) => setCurrentMs(e.currentTarget.currentTime * 1000)}
+                            />
                         </div>
-                    ))
-                ) : (
-                    <p className="text-sm text-tertiary">
-                        {call.status === "FAILED" ? "No transcript available." : "The transcript will appear when transcription finishes."}
-                    </p>
-                )}
-            </section>
+                    )}
+
+                    <Tabs selectedKey={tab} onSelectionChange={setTab} className="gap-5">
+                        <Tabs.List type="underline" fullWidth>
+                            <Tabs.Item id="analysis" label="Analysis" />
+                            <Tabs.Item id="transcript" label="Transcript" />
+                        </Tabs.List>
+                        <Tabs.Panel id="analysis" className="flex flex-col gap-4">
+                            <CallAnalysisSection call={call} query={analysisQuery} hasActiveRubric={hasActiveRubric} onSeek={seek} />
+                        </Tabs.Panel>
+                        <Tabs.Panel id="transcript" className="flex flex-col gap-1">
+                            {transcript ? (
+                                transcript.map((u, i) => (
+                                    <div key={u.i} ref={i === activeIndex ? activeRef : undefined} className="scroll-mt-24">
+                                        {editingIndex === i ? (
+                                            <EditLine
+                                                callId={call.id}
+                                                utterance={u}
+                                                index={i}
+                                                onSaved={(text) => saveLine(i, text)}
+                                                onCancel={() => setEditingIndex(null)}
+                                            />
+                                        ) : (
+                                            <TranscriptLine
+                                                utterance={u}
+                                                isActive={i === activeIndex}
+                                                onSeek={() => seek(i)}
+                                                onEdit={() => setEditingIndex(i)}
+                                            />
+                                        )}
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-sm text-tertiary">
+                                    {call.status === "FAILED" ? "No transcript available." : "The transcript will appear when transcription finishes."}
+                                </p>
+                            )}
+                        </Tabs.Panel>
+                    </Tabs>
+                </>
+            )}
         </SlideoutPanel>
     );
 }
@@ -172,55 +202,55 @@ function RepField({ call, repNames }: { call: CallRow; repNames: string[] }) {
 
     return (
         <section className="flex flex-col gap-1.5">
-            <label htmlFor="call-rep" className="text-sm font-medium text-secondary">
-                Rep
-            </label>
             {isAdding ? (
-                <form
-                    className="flex items-center gap-2"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        assign(newName);
-                    }}
-                >
-                    <input
-                        id="call-rep"
-                        autoFocus
-                        placeholder="Rep's name"
-                        className={FIELD_CLASS}
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Escape") {
-                                e.stopPropagation();
-                                setIsAdding(false);
-                            }
+                <>
+                    <label htmlFor="call-rep" className="text-sm font-medium text-secondary">
+                        Rep
+                    </label>
+                    <form
+                        className="flex items-center gap-2"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            assign(newName);
                         }}
-                    />
-                    <Button type="submit" size="sm" isLoading={pending} isDisabled={!newName.trim()}>
-                        Add
-                    </Button>
-                    <Button size="sm" color="link-gray" onClick={() => setIsAdding(false)}>
-                        Cancel
-                    </Button>
-                </form>
+                    >
+                        <input
+                            id="call-rep"
+                            autoFocus
+                            placeholder="Rep's name"
+                            className={FIELD_CLASS}
+                            value={newName}
+                            onChange={(e) => setNewName(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Escape") {
+                                    e.stopPropagation();
+                                    setIsAdding(false);
+                                }
+                            }}
+                        />
+                        <Button type="submit" size="sm" isLoading={pending} isDisabled={!newName.trim()}>
+                            Add
+                        </Button>
+                        <Button size="sm" color="link-gray" onClick={() => setIsAdding(false)}>
+                            Cancel
+                        </Button>
+                    </form>
+                </>
             ) : (
-                <select
-                    id="call-rep"
-                    className={FIELD_CLASS}
-                    value={call.rep?.name ?? ""}
-                    disabled={pending}
-                    onChange={(e) => (e.target.value === NEW_REP ? setIsAdding(true) : assign(e.target.value))}
+                <Select
+                    label="Rep"
+                    size="sm"
+                    value={call.rep?.name ?? UNASSIGNED}
+                    isDisabled={pending}
+                    onChange={(key) => (key === NEW_REP ? setIsAdding(true) : assign(key && key !== UNASSIGNED ? String(key) : ""))}
                 >
-                    <option value="">Unassigned</option>
-                    {unknownRep && <option value={unknownRep}>Add “{unknownRep}” as a new rep</option>}
+                    <Select.Item id={UNASSIGNED} label="Unassigned" />
+                    {unknownRep && <Select.Item id={unknownRep} label={`Add “${unknownRep}” as a new rep`} />}
                     {repNames.map((name) => (
-                        <option key={name} value={name}>
-                            {name}
-                        </option>
+                        <Select.Item key={name} id={name} label={name} />
                     ))}
-                    <option value={NEW_REP}>New rep…</option>
-                </select>
+                    <Select.Item id={NEW_REP} label="New rep…" />
+                </Select>
             )}
             {unknownRep && (
                 <p className="text-xs text-warning-primary">The rep introduced themselves as “{unknownRep}”, who isn&apos;t one of your reps yet.</p>

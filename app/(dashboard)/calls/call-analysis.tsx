@@ -1,8 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getCallAnalysis, type CallAnalysis } from "@/app/actions/calls";
+import { ChevronDown } from "@untitledui/icons";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { Button as AriaButton, Disclosure, DisclosurePanel, Heading } from "react-aria-components";
+import type { CallAnalysis } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { ANALYSIS_FAILED_MESSAGE, type Quote } from "@/lib/calls";
 import { cx } from "@/utils/cx";
@@ -24,75 +26,45 @@ const humanize = (value: string) => value.charAt(0) + value.slice(1).toLowerCase
 
 interface CallAnalysisSectionProps {
     call: CallRow;
+    query: UseQueryResult<CallAnalysis | null>;
     hasActiveRubric: boolean;
     onSeek: (utteranceIndex: number) => void;
 }
 
-export function CallAnalysisSection({ call, hasActiveRubric, onSeek }: CallAnalysisSectionProps) {
-    // Keyed by status like the transcript. gcTime 0 drops the cached result once a re-analysis starts, so the new one is fetched.
-    const query = useQuery({
-        queryKey: ["call-analysis", call.id, call.status],
-        queryFn: () => getCallAnalysis(call.id),
-        enabled: call.status === "DONE",
-        staleTime: Infinity,
-        gcTime: 0,
-    });
-
+export function CallAnalysisSection({ call, query, hasActiveRubric, onSeek }: CallAnalysisSectionProps) {
     if (call.status === "FAILED" && call.failedStage === "analyze") {
         return (
-            <Section>
-                <div className="flex items-start justify-between gap-4 rounded-lg bg-error-primary p-4 text-sm text-error-primary">
-                    <p>{ANALYSIS_FAILED_MESSAGE}</p>
-                    <RetryButton callId={call.id} />
-                </div>
-            </Section>
+            <div className="flex items-start justify-between gap-4 rounded-lg bg-error-primary p-4 text-sm text-error-primary">
+                <p>{ANALYSIS_FAILED_MESSAGE}</p>
+                <RetryButton callId={call.id} />
+            </div>
         );
     }
     if (call.status === "TRANSCRIBED") {
-        return (
-            <Section>
-                {hasActiveRubric ? (
-                    <LoadingIndicator label="Waiting to be analyzed…" className="text-sm text-tertiary" />
-                ) : (
-                    <p className="text-sm text-tertiary">Analysis starts once a rubric set is active.</p>
-                )}
-            </Section>
+        return hasActiveRubric ? (
+            <LoadingIndicator label="Waiting to be analyzed…" className="text-sm text-tertiary" />
+        ) : (
+            <p className="text-sm text-tertiary">Analysis starts once a rubric set is active.</p>
         );
     }
     if (call.status === "ANALYZING") {
         return (
-            <Section>
-                <LoadingIndicator
-                    label={call.analysisProgress?.stage === "assessing" ? "Scoring the call…" : "Classifying the call…"}
-                    className="text-sm text-tertiary"
-                />
-            </Section>
+            <LoadingIndicator
+                label={call.analysisProgress?.stage === "assessing" ? "Scoring the call…" : "Classifying the call…"}
+                className="text-sm text-tertiary"
+            />
         );
     }
-    if (call.status !== "DONE") return null;
+    if (call.status === "FAILED") return <p className="text-sm text-tertiary">No analysis available.</p>;
+    if (call.status !== "DONE") return <p className="text-sm text-tertiary">Analysis starts once the call is transcribed.</p>;
 
     const analysis = query.data;
-    return (
-        <Section>
-            {query.isPending ? (
-                <LoadingIndicator label="Loading analysis…" className="text-sm text-tertiary" />
-            ) : query.isError ? (
-                <p className="text-sm text-error-primary">{query.error.message}</p>
-            ) : analysis ? (
-                <AnalysisResult analysis={analysis} onSeek={onSeek} />
-            ) : (
-                <p className="text-sm text-tertiary">No analysis available.</p>
-            )}
-        </Section>
-    );
-}
-
-function Section({ children }: { children: ReactNode }) {
-    return (
-        <section className="flex flex-col gap-4">
-            <h3 className="text-md font-semibold text-primary">Analysis</h3>
-            {children}
-        </section>
+    return query.isError ? (
+        <p className="text-sm text-error-primary">{query.error.message}</p>
+    ) : analysis ? (
+        <AnalysisResult analysis={analysis} onSeek={onSeek} />
+    ) : (
+        <p className="text-sm text-tertiary">No analysis available.</p>
     );
 }
 
@@ -139,19 +111,7 @@ function AnalysisResult({ analysis, onSeek }: { analysis: CallAnalysis; onSeek: 
             )}
 
             {[...quadrants].map(([quadrant, criteria]) => (
-                <div key={quadrant} className="flex flex-col gap-2">
-                    <h4 className="text-sm font-semibold text-primary">{quadrant || "Criteria"}</h4>
-                    {criteria.map((c) => (
-                        <div key={c.criterionId} className="flex flex-col gap-1 rounded-lg p-3 ring-1 ring-secondary">
-                            <div className="flex items-start justify-between gap-3">
-                                <p className="text-sm font-medium text-primary">{c.label}</p>
-                                <span className={cx(BADGE_CLASS, RESULT[resultKey(c)].className)}>{RESULT[resultKey(c)].label}</span>
-                            </div>
-                            {c.rationale && <p className="text-sm text-tertiary">{c.rationale}</p>}
-                            <Quotes quotes={c.quotes} onSeek={onSeek} />
-                        </div>
-                    ))}
-                </div>
+                <Quadrant key={quadrant} name={quadrant || "Criteria"} criteria={criteria} onSeek={onSeek} />
             ))}
 
             {analysis.policyViolations.length > 0 && (
@@ -194,6 +154,48 @@ function AnalysisResult({ analysis, onSeek }: { analysis: CallAnalysis; onSeek: 
                 </div>
             )}
         </>
+    );
+}
+
+function Quadrant({ name, criteria, onSeek }: { name: string; criteria: Criterion[]; onSeek: (utteranceIndex: number) => void }) {
+    const scored = criteria.map(resultKey).filter((r) => r !== "NA");
+    const passed = scored.filter((r) => r !== "FAIL").length;
+
+    return (
+        <Disclosure defaultExpanded={passed < scored.length}>
+            {({ isExpanded }) => (
+                <>
+                    <Heading level={4}>
+                        <AriaButton
+                            slot="trigger"
+                            className="flex w-full items-center gap-2 rounded-md text-left text-sm font-semibold text-primary outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                        >
+                            {name}
+                            {scored.length > 0 && (
+                                <span className="font-medium text-tertiary">
+                                    {passed}/{scored.length}
+                                </span>
+                            )}
+                            <ChevronDown className={cx("ml-auto size-5 shrink-0 text-fg-quaternary transition", isExpanded && "rotate-180")} />
+                        </AriaButton>
+                    </Heading>
+                    <DisclosurePanel>
+                        <div className="flex flex-col gap-2 pt-2">
+                            {criteria.map((c) => (
+                                <div key={c.criterionId} className="flex flex-col gap-1 rounded-lg p-3 ring-1 ring-secondary">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <p className="text-sm font-medium text-primary">{c.label}</p>
+                                        <span className={cx(BADGE_CLASS, RESULT[resultKey(c)].className)}>{RESULT[resultKey(c)].label}</span>
+                                    </div>
+                                    {c.rationale && <p className="text-sm text-tertiary">{c.rationale}</p>}
+                                    <Quotes quotes={c.quotes} onSeek={onSeek} />
+                                </div>
+                            ))}
+                        </div>
+                    </DisclosurePanel>
+                </>
+            )}
+        </Disclosure>
     );
 }
 
