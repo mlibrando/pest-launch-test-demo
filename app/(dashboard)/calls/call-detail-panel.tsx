@@ -10,7 +10,7 @@ import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-
 import { Tabs } from "@/components/application/tabs/tabs";
 import { Button } from "@/components/base/buttons/button";
 import { Select } from "@/components/base/select/select";
-import { formatSeconds, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
+import { CALLS_QUERY_KEY, formatSeconds, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
 import { cx } from "@/utils/cx";
 import { CallAnalysisSection } from "./call-analysis";
 import { DeleteCallButton, ReanalyzeButton, RetryButton, StatusBadge, type CallRow } from "./call-status";
@@ -185,6 +185,7 @@ export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: Ca
 }
 
 function RepField({ call, repNames }: { call: CallRow; repNames: string[] }) {
+    const queryClient = useQueryClient();
     const [isAdding, setIsAdding] = useState(false);
     const [newName, setNewName] = useState("");
     const [error, setError] = useState<string>();
@@ -197,7 +198,9 @@ function RepField({ call, repNames }: { call: CallRow; repNames: string[] }) {
         startTransition(async () => {
             const result = await assignCallRep(call.id, name);
             setError(result.error);
-            if (!result.error) setIsAdding(false);
+            if (result.error) return;
+            await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+            setIsAdding(false);
         });
 
     return (

@@ -1,12 +1,20 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { analyzeCall } from "@/lib/call-analysis";
 import { advanceCallQueue, claimNextAnalysis } from "@/lib/call-pipeline";
-import { AUDIO_MIME_BY_EXT, CALL_BUCKET, fileExt, PLAYBACK_URL_TTL_SEC, type Quote, type Tier, type Utterance } from "@/lib/calls";
+import {
+    AUDIO_MIME_BY_EXT,
+    CALL_BUCKET,
+    fileExt,
+    PLAYBACK_URL_TTL_SEC,
+    type AnalysisProgress,
+    type Quote,
+    type Tier,
+    type Utterance,
+} from "@/lib/calls";
 import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
 import type { RubricData } from "@/lib/rubrics";
@@ -84,16 +92,46 @@ export async function saveUploadedCalls(uploads: Pick<CallUpload, "id" | "fileNa
     } catch (err) {
         return { error: errorMessage(err) };
     }
-    revalidatePath("/calls");
     return {};
 }
 
-export async function processCallQueue() {
+/** Advances the queue, then returns the call list. The Calls page polls this while calls are in progress, which keeps processing going. */
+export async function syncCalls() {
     await requireSession();
     await advanceCallQueue();
     const id = await claimNextAnalysis();
     if (id) after(() => analyzeCall(id));
-    revalidatePath("/calls");
+
+    const company = await getActiveCompany();
+    const [calls, reps, activeRubrics] = await Promise.all([
+        prisma.call.findMany({
+            where: { companyId: company.id },
+            orderBy: { createdAt: "desc" },
+            select: {
+                id: true,
+                originalName: true,
+                status: true,
+                durationSec: true,
+                errorDetail: true,
+                failedStage: true,
+                createdAt: true,
+                repName: true,
+                rep: { select: { name: true } },
+                scorecard: true,
+                points: true,
+                maxPoints: true,
+                tier: true,
+                analysisProgress: true,
+            },
+        }),
+        prisma.rep.findMany({ where: { companyId: company.id }, orderBy: { name: "asc" }, select: { name: true } }),
+        prisma.rubricSet.count({ where: { status: "ACTIVE" } }),
+    ]);
+    return {
+        calls: calls.map((c) => ({ ...c, tier: c.tier as Tier | null, analysisProgress: c.analysisProgress as AnalysisProgress | null })),
+        repNames: reps.map((r) => r.name),
+        hasActiveRubric: activeRubrics > 0,
+    };
 }
 
 export async function getCallAudioUrl(id: string): Promise<{ error?: string; audioUrl?: string }> {
@@ -125,7 +163,6 @@ export async function retryCall(id: string) {
         where: { id, status: "FAILED" },
         data: { status: "UPLOADED", assemblyId: null, failedStage: null, errorDetail: null },
     });
-    revalidatePath("/calls");
 }
 
 export async function reanalyzeCall(id: string) {
@@ -134,7 +171,6 @@ export async function reanalyzeCall(id: string) {
         where: { id, OR: [{ status: "DONE" }, { status: "FAILED", failedStage: "analyze" }] },
         data: { status: "TRANSCRIBED", failedStage: null, errorDetail: null },
     });
-    revalidatePath("/calls");
 }
 
 export async function getCallAnalysis(id: string): Promise<CallAnalysis | null> {
@@ -227,7 +263,6 @@ export async function assignCallRep(callId: string, name: string): Promise<{ err
     } catch (err) {
         return { error: errorMessage(err) };
     }
-    revalidatePath("/calls");
     return {};
 }
 
@@ -241,6 +276,5 @@ export async function deleteCall(id: string): Promise<{ error?: string }> {
     } catch (err) {
         return { error: errorMessage(err) };
     }
-    revalidatePath("/calls");
     return {};
 }

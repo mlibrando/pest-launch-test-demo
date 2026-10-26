@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { RefreshCcw01, Trash01 } from "@untitledui/icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { deleteCall, reanalyzeCall, retryCall } from "@/app/actions/calls";
 import { ConfirmDialog } from "@/components/application/confirm-dialog/confirm-dialog";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { Button } from "@/components/base/buttons/button";
 import type { CallStatus } from "@/generated/prisma/client";
-import { MAX_ATTEMPTS, type AnalysisProgress, type Tier } from "@/lib/calls";
+import { CALLS_QUERY_KEY, MAX_ATTEMPTS, type AnalysisProgress, type Tier } from "@/lib/calls";
 import { cx } from "@/utils/cx";
 
 export type CallRow = {
@@ -67,6 +68,7 @@ export function TierBadge({ tier }: { tier: Tier }) {
 }
 
 export function RetryButton({ callId }: { callId: string }) {
+    const queryClient = useQueryClient();
     const [pending, startTransition] = useTransition();
     return (
         <Button
@@ -74,7 +76,12 @@ export function RetryButton({ callId }: { callId: string }) {
             color="secondary"
             iconLeading={<RefreshCcw01 data-icon />}
             isLoading={pending}
-            onClick={() => startTransition(() => retryCall(callId))}
+            onClick={() =>
+                startTransition(async () => {
+                    await retryCall(callId);
+                    await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+                })
+            }
         >
             Retry
         </Button>
@@ -82,6 +89,7 @@ export function RetryButton({ callId }: { callId: string }) {
 }
 
 export function ReanalyzeButton({ callId }: { callId: string }) {
+    const queryClient = useQueryClient();
     const [pending, startTransition] = useTransition();
     return (
         <Button
@@ -89,7 +97,12 @@ export function ReanalyzeButton({ callId }: { callId: string }) {
             color="secondary"
             iconLeading={<RefreshCcw01 data-icon />}
             isLoading={pending}
-            onClick={() => startTransition(() => reanalyzeCall(callId))}
+            onClick={() =>
+                startTransition(async () => {
+                    await reanalyzeCall(callId);
+                    await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+                })
+            }
         >
             Re-analyze
         </Button>
@@ -97,6 +110,7 @@ export function ReanalyzeButton({ callId }: { callId: string }) {
 }
 
 export function DeleteCallButton({ call, iconOnly }: { call: CallRow; iconOnly?: boolean }) {
+    const queryClient = useQueryClient();
     const [confirming, setConfirming] = useState(false);
     const [error, setError] = useState<string>();
     const [pending, startTransition] = useTransition();
@@ -105,7 +119,9 @@ export function DeleteCallButton({ call, iconOnly }: { call: CallRow; iconOnly?:
         startTransition(async () => {
             const result = await deleteCall(call.id);
             setError(result.error);
-            if (!result.error) setConfirming(false);
+            if (result.error) return;
+            await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+            setConfirming(false);
         });
 
     return (

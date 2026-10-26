@@ -2,16 +2,18 @@
 
 import { useRef, useState, useTransition, type Ref } from "react";
 import { UploadCloud02 } from "@untitledui/icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { prepareCallUploads, saveUploadedCalls } from "@/app/actions/calls";
 import { LoadingOverlay } from "@/components/application/loading-indicator/loading-indicator";
 import { Button } from "@/components/base/buttons/button";
-import { AUDIO_MIME_BY_EXT } from "@/lib/calls";
+import { AUDIO_MIME_BY_EXT, CALLS_QUERY_KEY } from "@/lib/calls";
 
 const ACCEPT = Object.keys(AUDIO_MIME_BY_EXT)
     .map((ext) => `.${ext}`)
     .join(",");
 
 function useCallUpload() {
+    const queryClient = useQueryClient();
     const [fileCount, setFileCount] = useState(0);
     const [error, setError] = useState<string>();
     const [pending, startTransition] = useTransition();
@@ -37,6 +39,7 @@ function useCallUpload() {
             const failed = files.length - uploaded.length;
 
             const saved = uploaded.length ? await saveUploadedCalls(uploaded) : {};
+            if (uploaded.length && !saved.error) await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
             setError(saved.error ?? (failed ? `${failed} of ${files.length} files failed to upload.` : undefined));
         });
 

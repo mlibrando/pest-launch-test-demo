@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { syncCalls } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
-import { ANALYSIS_FAILED_MESSAGE, formatSeconds } from "@/lib/calls";
+import { ANALYSIS_FAILED_MESSAGE, CALLS_QUERY_KEY, formatSeconds } from "@/lib/calls";
 import { CallDetailPanel } from "./call-detail-panel";
-import { CallQueuePoller } from "./call-queue-poller";
 import { DeleteCallButton, RetryButton, StatusBadge, TierBadge, type CallRow } from "./call-status";
 import { UploadCallsEmptyState } from "./upload-calls";
 
@@ -17,25 +18,38 @@ function timeAgo(date: Date) {
     return relativeTime.format(Math.round(minutes / (60 * 24)), "day");
 }
 
-interface CallTableProps {
-    calls: CallRow[];
-    repNames: string[];
-    hasActiveRubric: boolean;
-}
+const POLL_INTERVAL_MS = 5000;
 
-export function CallTable({ calls, repNames, hasActiveRubric }: CallTableProps) {
+// TRANSCRIBED calls only move on once there's a rubric to analyze them against.
+const isInProgress = (call: CallRow, hasActiveRubric: boolean) =>
+    call.status === "UPLOADED" || call.status === "TRANSCRIBING" || call.status === "ANALYZING" || (hasActiveRubric && call.status === "TRANSCRIBED");
+
+export function CallTable() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
-    const selected = calls.find((c) => c.id === selectedId);
+    // Each fetch also advances the queue, so polling while calls are in progress is what keeps them processing.
+    const query = useQuery({
+        queryKey: CALLS_QUERY_KEY,
+        queryFn: () => syncCalls(),
+        refetchInterval: ({ state: { data } }) => (data?.calls.some((c) => isInProgress(c, data.hasActiveRubric)) ? POLL_INTERVAL_MS : false),
+        // Processing only advances while this polls, so it shouldn't stall when the user switches tabs.
+        refetchIntervalInBackground: true,
+    });
 
+    if (!query.data) {
+        return query.isError ? (
+            <p className="text-sm text-error-primary">{query.error.message}</p>
+        ) : (
+            <LoadingIndicator label="Loading calls…" className="text-sm text-tertiary" />
+        );
+    }
+
+    const { calls, repNames, hasActiveRubric } = query.data;
+    const selected = calls.find((c) => c.id === selectedId);
     const queue = calls.filter((c) => c.status === "UPLOADED").reverse();
-    // TRANSCRIBED calls only move on once there's a rubric to analyze them against.
-    const inProgress =
-        queue.length +
-        calls.filter((c) => c.status === "TRANSCRIBING" || c.status === "ANALYZING" || (hasActiveRubric && c.status === "TRANSCRIBED")).length;
+    const inProgress = calls.filter((c) => isInProgress(c, hasActiveRubric)).length;
 
     return (
         <section className="rounded-xl bg-primary shadow-xs ring-1 ring-secondary">
-            <CallQueuePoller isActive={inProgress > 0} />
             {inProgress > 0 && (
                 <p className="flex items-center gap-2 border-b border-secondary bg-brand-primary px-6 py-3 text-sm text-brand-secondary">
                     <LoadingIndicator />

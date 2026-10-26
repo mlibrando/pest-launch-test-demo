@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type ReactNode } from "react";
 import { CheckCircle, ChevronDown } from "@untitledui/icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/application/confirm-dialog/confirm-dialog";
 import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-panel";
 import { activateRubricSet, saveRubricDraft, type RubricActionState } from "@/app/actions/rubrics";
@@ -9,6 +10,7 @@ import { Button } from "@/components/base/buttons/button";
 import { Input } from "@/components/base/input/input";
 import { Select } from "@/components/base/select/select";
 import { Tooltip, TooltipTrigger } from "@/components/base/tooltip/tooltip";
+import { CALLS_QUERY_KEY } from "@/lib/calls";
 import {
     isPlaceholderResolved,
     unresolvedItems,
@@ -37,6 +39,7 @@ interface DraftReviewPanelProps {
 }
 
 export function DraftReviewPanel({ id, version, initialData, documentNames, companyName, isOpen, onClose, onActivated }: DraftReviewPanelProps) {
+    const queryClient = useQueryClient();
     const [data, setData] = useState(initialData);
     const [dirty, setDirty] = useState(false);
     const [editing, setEditing] = useState<string | null>(null);
@@ -88,7 +91,14 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, comp
 
     const activate = () => {
         setConfirm(null);
-        run(() => activateRubricSet(id), onActivated);
+        run(
+            () => activateRubricSet(id),
+            () => {
+                // The call list's in-progress count depends on there being an active rubric.
+                queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
+                onActivated();
+            },
+        );
     };
 
     // Shows placeholder tokens in criterion text as their filled-in value, highlighted, so the reviewer sees the effect.

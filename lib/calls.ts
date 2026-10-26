@@ -40,3 +40,5 @@ export const ANALYSIS_FAILED_MESSAGE = "We're unable to provide analysis at this
 
 export type Tier = "GOLD" | "GREEN" | "BELOW";
 export type AnalysisProgress = { stage: "classifying" | "assessing"; attempt: number };
+
+export const CALLS_QUERY_KEY = ["calls"];
