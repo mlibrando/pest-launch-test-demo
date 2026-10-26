@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { syncCalls } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
@@ -25,7 +26,14 @@ const isInProgress = (call: CallRow, hasActiveRubric: boolean) =>
     call.status === "UPLOADED" || call.status === "TRANSCRIBING" || call.status === "ANALYZING" || (hasActiveRubric && call.status === "TRANSCRIBED");
 
 export function CallTable() {
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    // `?call=<id>` opens that call's panel, so other pages (like the Overview) can link straight to a call.
+    const linkedId = useSearchParams().get("call");
+    const [selectedId, setSelectedId] = useState<string | null>(linkedId);
+    const closePanel = () => {
+        setSelectedId(null);
+        // Drop the link so a refresh doesn't reopen the panel.
+        if (linkedId) window.history.replaceState(null, "", "/calls");
+    };
     // Each fetch also advances the queue, so polling while calls are in progress is what keeps them processing.
     const query = useQuery({
         queryKey: CALLS_QUERY_KEY,
@@ -134,7 +142,7 @@ export function CallTable() {
                     call={selected}
                     repNames={repNames}
                     hasActiveRubric={hasActiveRubric}
-                    onClose={() => setSelectedId(null)}
+                    onClose={closePanel}
                 />
             )}
         </section>

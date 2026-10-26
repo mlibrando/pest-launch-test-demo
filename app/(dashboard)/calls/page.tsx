@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ClipboardCheck } from "@untitledui/icons";
+import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { Button } from "@/components/base/buttons/button";
 import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
@@ -34,7 +35,10 @@ export default function CallsPage() {
                     <UploadCallsButton />
                 </div>
             </div>
-            <CallTable />
+            {/* CallTable reads the URL's `?call=`, which isn't known until request time. */}
+            <Suspense fallback={<LoadingIndicator label="Loading calls…" className="text-sm text-tertiary" />}>
+                <CallTable />
+            </Suspense>
         </div>
     );
 }
