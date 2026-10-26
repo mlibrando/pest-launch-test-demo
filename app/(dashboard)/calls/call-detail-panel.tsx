@@ -9,7 +9,8 @@ import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-
 import { Button } from "@/components/base/buttons/button";
 import { formatSeconds, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
 import { cx } from "@/utils/cx";
-import { DeleteCallButton, RetryButton, StatusBadge, type CallRow } from "./call-status";
+import { CallAnalysisSection } from "./call-analysis";
+import { DeleteCallButton, ReanalyzeButton, RetryButton, StatusBadge, type CallRow } from "./call-status";
 
 // Refresh the signed URL a little before it expires.
 const AUDIO_STALE_MS = PLAYBACK_URL_TTL_SEC * 1000 * 0.9;
@@ -22,10 +23,11 @@ const NEW_REP = "__new";
 interface CallDetailPanelProps {
     call: CallRow;
     repNames: string[];
+    hasActiveRubric: boolean;
     onClose: () => void;
 }
 
-export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProps) {
+export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: CallDetailPanelProps) {
     const queryClient = useQueryClient();
     const [currentMs, setCurrentMs] = useState(0);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -61,8 +63,9 @@ export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProp
         activeRef.current?.scrollIntoView({ block: "nearest" });
     }, [activeIndex]);
 
-    const seek = (u: Utterance) => {
-        if (!audioRef.current) return;
+    const seek = (utteranceIndex: number) => {
+        const u = transcript?.[utteranceIndex];
+        if (!audioRef.current || !u) return;
         audioRef.current.currentTime = u.startMs / 1000;
         audioRef.current.play();
     };
@@ -79,7 +82,7 @@ export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProp
             title={call.originalName}
             description={
                 <p className="flex flex-wrap items-center gap-2 text-sm text-tertiary">
-                    <StatusBadge status={call.status} />
+                    <StatusBadge status={call.status} attempt={call.analysisProgress?.attempt} />
                     {call.durationSec ? <span>{formatSeconds(call.durationSec)}</span> : null}
                     <span>Uploaded {call.createdAt.toLocaleString()}</span>
                 </p>
@@ -89,11 +92,14 @@ export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProp
                     <div className="ml-auto">
                         <DeleteCallButton call={call} />
                     </div>
-                    {call.status === "FAILED" && <RetryButton callId={call.id} />}
+                    {call.status === "FAILED" && call.failedStage !== "analyze" && <RetryButton callId={call.id} />}
+                    {call.status === "DONE" && <ReanalyzeButton callId={call.id} />}
                 </>
             }
         >
-            {call.status === "FAILED" && <p className="rounded-lg bg-error-primary p-4 text-sm text-error-primary">{call.errorDetail}</p>}
+            {call.status === "FAILED" && call.failedStage !== "analyze" && (
+                <p className="rounded-lg bg-error-primary p-4 text-sm text-error-primary">{call.errorDetail}</p>
+            )}
 
             <RepField call={call} repNames={repNames} />
 
@@ -110,6 +116,8 @@ export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProp
                     onTimeUpdate={(e) => setCurrentMs(e.currentTarget.currentTime * 1000)}
                 />
             )}
+
+            <CallAnalysisSection call={call} hasActiveRubric={hasActiveRubric} onSeek={seek} />
 
             <section className="flex flex-col gap-1">
                 <h3 className="mb-2 text-md font-semibold text-primary">Transcript</h3>
@@ -130,7 +138,7 @@ export function CallDetailPanel({ call, repNames, onClose }: CallDetailPanelProp
                                 <TranscriptLine
                                     utterance={u}
                                     isActive={i === activeIndex}
-                                    onSeek={() => seek(u)}
+                                    onSeek={() => seek(i)}
                                     onEdit={() => setEditingIndex(i)}
                                 />
                             )}

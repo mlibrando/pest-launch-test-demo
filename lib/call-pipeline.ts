@@ -1,12 +1,15 @@
 import "server-only";
 import { AssemblyAI, type Transcript } from "assemblyai";
-import { CALL_BUCKET, type Utterance } from "@/lib/calls";
+import { Prisma } from "@/generated/prisma/client";
+import { CALL_BUCKET, type AnalysisProgress, type Utterance } from "@/lib/calls";
 import { correctIntro } from "@/lib/intro-correction";
 import { prisma } from "@/lib/prisma";
 import { supabase } from "@/lib/supabase";
 import { errorMessage } from "@/utils/error-message";
 
 const assembly = new AssemblyAI({ apiKey: `${process.env.ASSEMBLYAI_API_KEY}` });
+
+const STALE_ANALYSIS_MS = 10 * 60 * 1000;
 
 const withCompany = { company: { include: { reps: { select: { id: true, name: true } } } } } as const;
 type CompanyWithReps = { name: string; reps: { id: string; name: string }[] };
@@ -55,6 +58,34 @@ async function submitNextCall() {
         },
         { timeout: 30_000 },
     );
+}
+
+/** Claims the oldest transcribed call for analysis, or returns null. Only one call is ever analyzing at a time. */
+export async function claimNextAnalysis(): Promise<string | null> {
+    return prisma.$transaction(async (tx) => {
+        const [{ locked }] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(4202) AS locked`;
+        if (!locked) return null;
+
+        // analyzeCall bumps updatedAt before every attempt, so a call this quiet was orphaned (e.g. the server restarted).
+        await tx.call.updateMany({
+            where: { status: "ANALYZING", updatedAt: { lt: new Date(Date.now() - STALE_ANALYSIS_MS) } },
+            data: { status: "TRANSCRIBED", analysisProgress: Prisma.DbNull },
+        });
+        if (await tx.call.count({ where: { status: "ANALYZING" } })) return null;
+
+        const rubricSet = await tx.rubricSet.findFirst({ where: { status: "ACTIVE" }, select: { id: true } });
+        if (!rubricSet) return null;
+
+        const next = await tx.call.findFirst({ where: { status: "TRANSCRIBED" }, orderBy: { createdAt: "asc" }, select: { id: true } });
+        if (!next) return null;
+
+        const progress: AnalysisProgress = { stage: "classifying", attempt: 1 };
+        await tx.call.update({
+            where: { id: next.id },
+            data: { status: "ANALYZING", rubricSetId: rubricSet.id, analysisProgress: progress, failedStage: null, errorDetail: null },
+        });
+        return next.id;
+    });
 }
 
 async function saveTranscript(callId: string, company: CompanyWithReps, transcript: Transcript) {

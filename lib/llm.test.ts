@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import Anthropic from "@anthropic-ai/sdk";
-import { MAX_ATTEMPTS, OutputIssues, retryNote, withRetries, type AttemptLog, type PreviousAttempt } from "@/lib/llm";
+import { MAX_ATTEMPTS } from "@/lib/calls";
+import { OutputIssues, retryNote, withRetries, type AttemptLog, type PreviousAttempt } from "@/lib/llm";
 
 const delays: number[] = [];
 beforeEach(() => {

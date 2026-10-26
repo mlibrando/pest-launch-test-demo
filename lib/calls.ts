@@ -34,6 +34,8 @@ export function categoryForCallType(callType: string): Category {
     return "SERVICE";
 }
 
+export const MAX_ATTEMPTS = 3;
+
 export const ANALYSIS_FAILED_MESSAGE = "We're unable to provide analysis at this time. Please retry another time or consider uploading another call.";
 
 export type Tier = "GOLD" | "GREEN" | "BELOW";

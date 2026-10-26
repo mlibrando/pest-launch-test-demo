@@ -2,11 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { RefreshCcw01, Trash01 } from "@untitledui/icons";
-import { deleteCall, retryCall } from "@/app/actions/calls";
+import { deleteCall, reanalyzeCall, retryCall } from "@/app/actions/calls";
 import { ConfirmDialog } from "@/components/application/confirm-dialog/confirm-dialog";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { Button } from "@/components/base/buttons/button";
 import type { CallStatus } from "@/generated/prisma/client";
+import { MAX_ATTEMPTS, type AnalysisProgress, type Tier } from "@/lib/calls";
 import { cx } from "@/utils/cx";
 
 export type CallRow = {
@@ -15,10 +16,18 @@ export type CallRow = {
     status: CallStatus;
     durationSec: number | null;
     errorDetail: string | null;
+    failedStage: string | null;
     createdAt: Date;
     repName: string | null;
     rep: { name: string } | null;
+    scorecard: string | null;
+    points: number | null;
+    maxPoints: number | null;
+    tier: Tier | null;
+    analysisProgress: AnalysisProgress | null;
 };
+
+export const BADGE_CLASS = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 
 const STATUS: Record<CallStatus, { label: string; className: string }> = {
     UPLOADED: { label: "Queued", className: "bg-secondary text-tertiary" },
@@ -29,15 +38,32 @@ const STATUS: Record<CallStatus, { label: string; className: string }> = {
     FAILED: { label: "Failed", className: "bg-error-secondary text-error-primary" },
 };
 
-export function StatusBadge({ status, queuePosition }: { status: CallStatus; queuePosition?: number }) {
+interface StatusBadgeProps {
+    status: CallStatus;
+    queuePosition?: number;
+    attempt?: number;
+}
+
+export function StatusBadge({ status, queuePosition, attempt }: StatusBadgeProps) {
     const isWorking = status === "TRANSCRIBING" || status === "ANALYZING";
     return (
-        <span className={cx("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", STATUS[status].className)}>
+        <span className={cx(BADGE_CLASS, STATUS[status].className)}>
             {isWorking && <LoadingIndicator size="xs" />}
             {STATUS[status].label}
             {queuePosition && ` · #${queuePosition}`}
+            {status === "ANALYZING" && (attempt ?? 1) > 1 && ` · attempt ${attempt}/${MAX_ATTEMPTS}`}
         </span>
     );
+}
+
+const TIER: Record<Tier, { label: string; className: string }> = {
+    GOLD: { label: "Gold", className: "bg-warning-secondary text-warning-primary" },
+    GREEN: { label: "Green", className: "bg-success-secondary text-success-primary" },
+    BELOW: { label: "Below", className: "bg-error-secondary text-error-primary" },
+};
+
+export function TierBadge({ tier }: { tier: Tier }) {
+    return <span className={cx(BADGE_CLASS, TIER[tier].className)}>{TIER[tier].label}</span>;
 }
 
 export function RetryButton({ callId }: { callId: string }) {
@@ -51,6 +77,21 @@ export function RetryButton({ callId }: { callId: string }) {
             onClick={() => startTransition(() => retryCall(callId))}
         >
             Retry
+        </Button>
+    );
+}
+
+export function ReanalyzeButton({ callId }: { callId: string }) {
+    const [pending, startTransition] = useTransition();
+    return (
+        <Button
+            size="sm"
+            color="secondary"
+            iconLeading={<RefreshCcw01 data-icon />}
+            isLoading={pending}
+            onClick={() => startTransition(() => reanalyzeCall(callId))}
+        >
+            Re-analyze
         </Button>
     );
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ClipboardCheck } from "@untitledui/icons";
 import { Button } from "@/components/base/buttons/button";
+import type { AnalysisProgress, Tier } from "@/lib/calls";
 import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
 import type { RubricData } from "@/lib/rubrics";
@@ -12,6 +13,9 @@ import { UploadCallsButton } from "./upload-calls";
 export const metadata: Metadata = {
     title: "Calls",
 };
+
+// Covers the Server Actions on this page too, including the after() analysis: up to 6 LLM attempts in the worst case.
+export const maxDuration = 300;
 
 export default function CallsPage() {
     return (
@@ -40,7 +44,7 @@ export default function CallsPage() {
 
 async function CallList() {
     const company = await getActiveCompany();
-    const [calls, reps] = await Promise.all([
+    const [calls, reps, activeRubrics] = await Promise.all([
         prisma.call.findMany({
             where: { companyId: company.id },
             orderBy: { createdAt: "desc" },
@@ -50,14 +54,27 @@ async function CallList() {
                 status: true,
                 durationSec: true,
                 errorDetail: true,
+                failedStage: true,
                 createdAt: true,
                 repName: true,
                 rep: { select: { name: true } },
+                scorecard: true,
+                points: true,
+                maxPoints: true,
+                tier: true,
+                analysisProgress: true,
             },
         }),
         prisma.rep.findMany({ where: { companyId: company.id }, orderBy: { name: "asc" }, select: { name: true } }),
+        prisma.rubricSet.count({ where: { status: "ACTIVE" } }),
     ]);
-    return <CallTable calls={calls} repNames={reps.map((r) => r.name)} />;
+    return (
+        <CallTable
+            calls={calls.map((c) => ({ ...c, tier: c.tier as Tier | null, analysisProgress: c.analysisProgress as AnalysisProgress | null }))}
+            repNames={reps.map((r) => r.name)}
+            hasActiveRubric={activeRubrics > 0}
+        />
+    );
 }
 
 async function RubricSetsButton() {

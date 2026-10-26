@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
-import { formatSeconds } from "@/lib/calls";
+import { ANALYSIS_FAILED_MESSAGE, formatSeconds } from "@/lib/calls";
 import { CallDetailPanel } from "./call-detail-panel";
 import { CallQueuePoller } from "./call-queue-poller";
-import { DeleteCallButton, RetryButton, StatusBadge, type CallRow } from "./call-status";
+import { DeleteCallButton, RetryButton, StatusBadge, TierBadge, type CallRow } from "./call-status";
 import { UploadCallsEmptyState } from "./upload-calls";
 
 const relativeTime = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
@@ -17,12 +17,21 @@ function timeAgo(date: Date) {
     return relativeTime.format(Math.round(minutes / (60 * 24)), "day");
 }
 
-export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: string[] }) {
+interface CallTableProps {
+    calls: CallRow[];
+    repNames: string[];
+    hasActiveRubric: boolean;
+}
+
+export function CallTable({ calls, repNames, hasActiveRubric }: CallTableProps) {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const selected = calls.find((c) => c.id === selectedId);
 
     const queue = calls.filter((c) => c.status === "UPLOADED").reverse();
-    const inProgress = queue.length + calls.filter((c) => c.status === "TRANSCRIBING").length;
+    // TRANSCRIBED calls only move on once there's a rubric to analyze them against.
+    const inProgress =
+        queue.length +
+        calls.filter((c) => c.status === "TRANSCRIBING" || c.status === "ANALYZING" || (hasActiveRubric && c.status === "TRANSCRIBED")).length;
 
     return (
         <section className="rounded-xl bg-primary shadow-xs ring-1 ring-secondary">
@@ -30,7 +39,7 @@ export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: str
             {inProgress > 0 && (
                 <p className="flex items-center gap-2 border-b border-secondary bg-brand-primary px-6 py-3 text-sm text-brand-secondary">
                     <LoadingIndicator />
-                    {inProgress} call{inProgress === 1 ? "" : "s"} transcribing or queued · keep this page open so transcription continues
+                    {inProgress} call{inProgress === 1 ? "" : "s"} in progress · keep this page open so processing continues
                 </p>
             )}
 
@@ -43,6 +52,7 @@ export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: str
                             <th className="px-6 py-3 font-medium">Recording</th>
                             <th className="px-6 py-3 font-medium">Rep</th>
                             <th className="px-6 py-3 font-medium">Status</th>
+                            <th className="px-6 py-3 font-medium">Score</th>
                             <th className="px-6 py-3 font-medium">Duration</th>
                             <th className="px-6 py-3 font-medium">Uploaded</th>
                             <th className="px-6 py-3" />
@@ -55,7 +65,11 @@ export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: str
                                     <button type="button" className="text-left font-medium text-primary outline-none focus-visible:underline">
                                         {call.originalName}
                                     </button>
-                                    {call.status === "FAILED" && <p className="text-xs text-error-primary">{call.errorDetail}</p>}
+                                    {call.status === "FAILED" && (
+                                        <p className="text-xs text-error-primary">
+                                            {call.failedStage === "analyze" ? ANALYSIS_FAILED_MESSAGE : call.errorDetail}
+                                        </p>
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 text-secondary">
                                     {call.rep?.name ??
@@ -71,7 +85,18 @@ export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: str
                                     <StatusBadge
                                         status={call.status}
                                         queuePosition={call.status === "UPLOADED" ? queue.indexOf(call) + 1 : undefined}
+                                        attempt={call.analysisProgress?.attempt}
                                     />
+                                </td>
+                                <td className="px-6 py-4 text-secondary">
+                                    {call.status === "DONE" && call.maxPoints ? (
+                                        <span className="flex items-center gap-2 whitespace-nowrap">
+                                            {call.points}/{call.maxPoints}
+                                            {call.tier && <TierBadge tier={call.tier} />}
+                                        </span>
+                                    ) : (
+                                        "–"
+                                    )}
                                 </td>
                                 <td className="px-6 py-4 text-tertiary">{call.durationSec ? formatSeconds(call.durationSec) : "–"}</td>
                                 <td className="px-6 py-4 text-tertiary" title={call.createdAt.toLocaleString()} suppressHydrationWarning>
@@ -89,7 +114,15 @@ export function CallTable({ calls, repNames }: { calls: CallRow[]; repNames: str
                 </table>
             )}
 
-            {selected && <CallDetailPanel key={selected.id} call={selected} repNames={repNames} onClose={() => setSelectedId(null)} />}
+            {selected && (
+                <CallDetailPanel
+                    key={selected.id}
+                    call={selected}
+                    repNames={repNames}
+                    hasActiveRubric={hasActiveRubric}
+                    onClose={() => setSelectedId(null)}
+                />
+            )}
         </section>
     );
 }

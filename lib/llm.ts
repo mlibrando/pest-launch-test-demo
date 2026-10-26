@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { toJSONSchema, type z } from "zod";
+import { MAX_ATTEMPTS } from "@/lib/calls";
 import { errorMessage } from "@/utils/error-message";
 
 // withRetries owns retrying, so SDK retries would multiply the attempt count.
@@ -9,7 +10,6 @@ export const anthropic = new Anthropic({ maxRetries: 0 });
 
 export const HAIKU = "claude-haiku-5-5";
 export const SONNET = "claude-sonnet-5-5";
-export const MAX_ATTEMPTS = 3;
 
 type OutputKind = "refusal" | "max_tokens" | "schema" | "validation";
 

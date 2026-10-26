@@ -70,14 +70,15 @@ const fullAssessmentSchema = (criterionIds: string[]) =>
         criteria: z.array(
             z.object({
                 criterionId: idEnum(criterionIds),
-                verdict: z.enum(["MET", "NOT_MET"]),
-                rationale: z.string().describe("Why the rep did or didn't meet the quality bar, citing what they said"),
+                // Evidence and rationale come before the verdict so the model reasons before it decides.
                 evidence: z.array(quoteSchema),
+                rationale: z.string().describe("Why the rep did or didn't meet the quality bar, citing what they said"),
+                verdict: z.enum(["MET", "NOT_MET"]),
             }),
         ),
         summary: z.string(),
         coaching: z.object({ strengths: z.array(noteSchema), improvements: z.array(noteSchema) }),
-        policyViolations: z.array(z.object({ policyIndex: z.number().int(), explanation: z.string(), evidence: z.array(quoteSchema) })),
+        policyViolations: z.array(z.object({ policyIndex: z.number().int(), evidence: z.array(quoteSchema), explanation: z.string() })),
     });
 
 type FullAssessment = z.infer<ReturnType<typeof fullAssessmentSchema>>;

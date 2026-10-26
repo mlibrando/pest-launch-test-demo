@@ -2,13 +2,45 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { requireSession } from "@/lib/auth/session";
-import { advanceCallQueue } from "@/lib/call-pipeline";
-import { AUDIO_MIME_BY_EXT, CALL_BUCKET, fileExt, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
+import { analyzeCall } from "@/lib/call-analysis";
+import { advanceCallQueue, claimNextAnalysis } from "@/lib/call-pipeline";
+import { AUDIO_MIME_BY_EXT, CALL_BUCKET, fileExt, PLAYBACK_URL_TTL_SEC, type Quote, type Tier, type Utterance } from "@/lib/calls";
 import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
+import type { RubricData } from "@/lib/rubrics";
 import { supabase } from "@/lib/supabase";
 import { errorMessage } from "@/utils/error-message";
+
+type Note = { text: string; utterance: number | null };
+
+export type CallAnalysis = {
+    scorecard: string | null;
+    category: string | null;
+    subtype: string | null;
+    direction: string | null;
+    outcome: string | null;
+    outcomeReason: string | null;
+    summary: string | null;
+    details: { pestType: string | null; serviceRequested: string | null; priceQuoted: string | null; followUp: string | null } | null;
+    coaching: { strengths: Note[]; improvements: Note[] } | null;
+    points: number | null;
+    maxPoints: number | null;
+    score: number | null;
+    tier: Tier | null;
+    analysisWarnings: string[];
+    criteria: {
+        criterionId: string;
+        quadrant: string;
+        label: string;
+        result: "PASS" | "FAIL" | "NA";
+        source: "MODEL" | "AUTO_PASS" | "EXCLUDED";
+        rationale: string | null;
+        quotes: Quote[];
+    }[];
+    policyViolations: { policyIndex: number; rule: string; explanation: string; quotes: Quote[] }[];
+};
 
 export type CallUpload = { id: string; fileName: string; audioPath: string; contentType: string; signedUrl: string };
 
@@ -59,6 +91,8 @@ export async function saveUploadedCalls(uploads: Pick<CallUpload, "id" | "fileNa
 export async function processCallQueue() {
     await requireSession();
     await advanceCallQueue();
+    const id = await claimNextAnalysis();
+    if (id) after(() => analyzeCall(id));
     revalidatePath("/calls");
 }
 
@@ -82,11 +116,83 @@ export async function getCallTranscript(id: string): Promise<Utterance[] | null>
 
 export async function retryCall(id: string) {
     await requireSession();
+    // An analysis failure keeps its transcript; anything else starts over from the audio.
+    await prisma.call.updateMany({
+        where: { id, status: "FAILED", failedStage: "analyze" },
+        data: { status: "TRANSCRIBED", failedStage: null, errorDetail: null },
+    });
     await prisma.call.updateMany({
         where: { id, status: "FAILED" },
         data: { status: "UPLOADED", assemblyId: null, failedStage: null, errorDetail: null },
     });
     revalidatePath("/calls");
+}
+
+export async function reanalyzeCall(id: string) {
+    await requireSession();
+    await prisma.call.updateMany({
+        where: { id, OR: [{ status: "DONE" }, { status: "FAILED", failedStage: "analyze" }] },
+        data: { status: "TRANSCRIBED", failedStage: null, errorDetail: null },
+    });
+    revalidatePath("/calls");
+}
+
+export async function getCallAnalysis(id: string): Promise<CallAnalysis | null> {
+    await requireSession();
+
+    const call = await prisma.call.findUnique({
+        where: { id },
+        select: {
+            scorecard: true,
+            category: true,
+            subtype: true,
+            direction: true,
+            outcome: true,
+            outcomeReason: true,
+            summary: true,
+            details: true,
+            coaching: true,
+            points: true,
+            maxPoints: true,
+            score: true,
+            tier: true,
+            analysisWarnings: true,
+            rubricSet: { select: { data: true } },
+            criteria: { select: { criterionId: true, result: true, source: true, rationale: true, quotes: true } },
+            policyViolations: { orderBy: { policyIndex: "asc" }, select: { policyIndex: true, rule: true, explanation: true, quotes: true } },
+        },
+    });
+    if (!call) return null;
+
+    const { rubricSet, criteria, policyViolations, ...fields } = call;
+    const rubricCriteria = (rubricSet?.data as RubricData | undefined)?.scorecards.find((s) => s.callType === call.scorecard)?.criteria ?? [];
+    const position = (criterionId: string) => {
+        const i = rubricCriteria.findIndex((c) => c.id === criterionId);
+        return i < 0 ? rubricCriteria.length : i;
+    };
+
+    return {
+        ...fields,
+        details: fields.details as CallAnalysis["details"],
+        coaching: fields.coaching as CallAnalysis["coaching"],
+        tier: fields.tier as Tier | null,
+        analysisWarnings: (fields.analysisWarnings as string[] | null) ?? [],
+        criteria: criteria
+            .toSorted((a, b) => position(a.criterionId) - position(b.criterionId))
+            .map((r) => {
+                const criterion = rubricCriteria.find((c) => c.id === r.criterionId);
+                return {
+                    ...r,
+                    // The rubric set can be deleted after grading; the stored results still stand on their own.
+                    quadrant: criterion?.quadrant ?? "",
+                    label: criterion?.label ?? r.criterionId,
+                    result: r.result as CallAnalysis["criteria"][number]["result"],
+                    source: r.source as CallAnalysis["criteria"][number]["source"],
+                    quotes: (r.quotes as Quote[] | null) ?? [],
+                };
+            }),
+        policyViolations: policyViolations.map((v) => ({ ...v, quotes: v.quotes as Quote[] })),
+    };
 }
 
 export async function updateUtterance(callId: string, index: number, text: string): Promise<{ error?: string }> {
