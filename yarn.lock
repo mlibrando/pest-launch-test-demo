@@ -1529,6 +1529,11 @@
   resolved "https://registry.npmjs.org/@untitledui/icons/-/icons-0.0.23.tgz"
   integrity sha512-WoBtPCXaxweF0RXS9IuqgEeJkBmT7A9SszPHB+vQJOxeAl0hDTFXHlWXsooYniXQ0JmP4+7RADdhWb39GWFT8g==
 
+"@vercel/analytics@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@vercel/analytics/-/analytics-2.0.1.tgz#d7d7bd37af7cfbeea95db5f132ae4889f4d26407"
+  integrity sha512-MTQG6V9qQrt1tsDeF+2Uoo5aPjqbVPys1xvnIftXSJYG2SrwXRHnqEvVoYID7BTruDz4lCd2Z7rM1BdkUehk2g==
+
 "@visx/curve@4.0.1-alpha.0":
   version "4.0.1-alpha.0"
   resolved "https://registry.npmjs.org/@visx/curve/-/curve-4.0.1-alpha.0.tgz"

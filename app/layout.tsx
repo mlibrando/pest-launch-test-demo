@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import { QueryProvider } from "@/providers/query-provider";
 import { RouteProvider } from "@/providers/route-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
@@ -33,6 +34,7 @@ export default function RootLayout({
                         <QueryProvider>{children}</QueryProvider>
                     </ThemeProvider>
                 </RouteProvider>
+                <Analytics />
             </body>
         </html>
     );
