@@ -13,6 +13,9 @@ export const metadata: Metadata = {
     title: "Calls",
 };
 
+// Covers the Server Actions on this page too, including the after() analysis: up to 6 LLM attempts in the worst case.
+export const maxDuration = 300;
+
 export default function CallsPage() {
     return (
         <div className="flex flex-col gap-6">
@@ -31,33 +34,9 @@ export default function CallsPage() {
                     <UploadCallsButton />
                 </div>
             </div>
-            <Suspense fallback={<p className="text-sm text-tertiary">Loading calls…</p>}>
-                <CallList />
-            </Suspense>
+            <CallTable />
         </div>
     );
-}
-
-async function CallList() {
-    const company = await getActiveCompany();
-    const [calls, reps] = await Promise.all([
-        prisma.call.findMany({
-            where: { companyId: company.id },
-            orderBy: { createdAt: "desc" },
-            select: {
-                id: true,
-                originalName: true,
-                status: true,
-                durationSec: true,
-                errorDetail: true,
-                createdAt: true,
-                repName: true,
-                rep: { select: { name: true } },
-            },
-        }),
-        prisma.rep.findMany({ where: { companyId: company.id }, orderBy: { name: "asc" }, select: { name: true } }),
-    ]);
-    return <CallTable calls={calls} repNames={reps.map((r) => r.name)} />;
 }
 
 async function RubricSetsButton() {

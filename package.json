@@ -7,7 +7,8 @@
     "build": "prisma generate --config prisma7.config.ts && next build",
     "start": "next start",
     "lint": "eslint",
-    "hash-password": "tsx scripts/hash-password.ts"
+    "hash-password": "tsx scripts/hash-password.ts",
+    "test": "tsx --conditions=react-server --test lib/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.1.0",
@@ -33,7 +34,8 @@
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.7.0",
     "tailwindcss-animate": "^1.0.7",
-    "tailwindcss-react-aria-components": "^2.2.0"
+    "tailwindcss-react-aria-components": "^2.2.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
