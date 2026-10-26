@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Utterance } from "@/lib/calls";
-import { mentionedInTranscript, normalize, numbersInTranscript, verifyQuote } from "@/lib/evidence";
+import { mentionedInTranscript, normalize, numbersInTranscript, relocateQuote, speakersWhoSay, verifyQuote } from "@/lib/evidence";
 
 const transcript: Utterance[] = [
     { i: 0, speaker: "A", startMs: 0, endMs: 1000, text: "Thanks for calling Acme Pest, this is Sam. How can I help?" },
@@ -33,9 +33,21 @@ describe("verifyQuote", () => {
         assert.equal(verifyQuote(transcript, { utterance: 2, quote: "on Tuesday. The quarterly plan" }, "A"), null);
     });
 
-    it("rejects a quote that runs into the next utterance by a different speaker", () => {
-        const problem = verifyQuote(transcript, { utterance: 3, quote: "for the year that works" });
+    it("rejects one speaker's quote that runs into the next utterance by a different speaker", () => {
+        const problem = verifyQuote(transcript, { utterance: 3, quote: "for the year that works" }, "A");
         assert.match(problem ?? "", /utterance 3: .*not found verbatim/);
+    });
+
+    it("accepts a quote that runs across a speaker change only when any speaker may be quoted", () => {
+        const split: Utterance[] = [
+            { i: 0, speaker: "A", startMs: 0, endMs: 1000, text: "If that's what you prefer, we can— Do" },
+            { i: 1, speaker: "B", startMs: 1000, endMs: 2000, text: "you have smaller service agreements?" },
+            { i: 2, speaker: "A", startMs: 2000, endMs: 3000, text: "Do you mean a shorter term?" },
+        ];
+        assert.equal(verifyQuote(split, { utterance: 1, quote: "Do you have smaller service agreements" }), null);
+        assert.match(verifyQuote(split, { utterance: 0, quote: "we can do you have" }, "A") ?? "", /not found verbatim/);
+        // A quote that is all on a neighbouring line isn't on this one.
+        assert.match(verifyQuote(split, { utterance: 1, quote: "do you mean a shorter" }) ?? "", /not found verbatim/);
     });
 
     it("rejects the wrong speaker", () => {
@@ -75,6 +87,40 @@ describe("mentionedInTranscript", () => {
 
     it("returns false for an empty value", () => {
         assert.equal(mentionedInTranscript(transcript, "  "), false);
+    });
+});
+
+describe("relocateQuote", () => {
+    it("moves a verbatim quote cited to the wrong line onto the line it is on", () => {
+        assert.deepEqual(relocateQuote(transcript, { utterance: 3, quote: "got ants in the kitchen" }), { utterance: 1, quote: "got ants in the kitchen" });
+    });
+
+    it("leaves a quote that is already on its cited line, including one that runs on", () => {
+        const q = { utterance: 2, quote: "out to you on Tuesday the quarterly plan" };
+        assert.equal(relocateQuote(transcript, q), q);
+    });
+
+    it("only moves to a line by the given speaker", () => {
+        const q = { utterance: 0, quote: "got ants in the kitchen" };
+        assert.equal(relocateQuote(transcript, q, "A"), q);
+        assert.deepEqual(relocateQuote(transcript, q, "B"), { ...q, utterance: 1 });
+    });
+
+    it("leaves paraphrases and quotes on more than one line for verifyQuote to reject", () => {
+        const paraphrase = { utterance: 3, quote: "I'll send a technician out" };
+        assert.equal(relocateQuote(transcript, paraphrase), paraphrase);
+        const twice: Utterance[] = [transcript[0], { ...transcript[2], text: "Thanks for calling again." }];
+        const q = { utterance: 9, quote: "thanks for calling" };
+        assert.equal(relocateQuote(twice, q), q);
+    });
+});
+
+describe("speakersWhoSay", () => {
+    it("lists each speaker who says the value as whole words", () => {
+        assert.deepEqual(speakersWhoSay(transcript, "Sam"), ["A", "B"]);
+        assert.deepEqual(speakersWhoSay(transcript, "acme pest"), ["A"]);
+        assert.deepEqual(speakersWhoSay(transcript, "Sa"), []);
+        assert.deepEqual(speakersWhoSay(transcript, "  "), []);
     });
 });
 

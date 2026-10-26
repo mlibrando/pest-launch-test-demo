@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight } from "@untitledui/icons";
+import { ChevronRight, PhoneIncoming01, PhoneOutgoing01 } from "@untitledui/icons";
 import { useMutationState, useQuery } from "@tanstack/react-query";
 import { syncCalls } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
@@ -30,9 +30,27 @@ const POLL_INTERVAL_MS = 5000;
 const isInProgress = (call: CallRow, hasActiveRubric: boolean) =>
     call.status === "UPLOADED" || call.status === "TRANSCRIBING" || call.status === "ANALYZING" || (hasActiveRubric && call.status === "TRANSCRIBED");
 
+// UNKNOWN shows as a blank, like a call that hasn't been analyzed yet.
+const DIRECTIONS: Record<string, { label: string; Icon: typeof PhoneIncoming01 }> = {
+    INBOUND: { label: "Inbound", Icon: PhoneIncoming01 },
+    OUTBOUND: { label: "Outbound", Icon: PhoneOutgoing01 },
+};
+
+function Direction({ direction }: { direction: string | null }) {
+    const known = direction ? DIRECTIONS[direction] : undefined;
+    if (!known) return "–";
+    return (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <known.Icon aria-hidden className="size-4 text-fg-quaternary" />
+            {known.label}
+        </span>
+    );
+}
+
 const SORT_VALUE: Record<SortKey, (call: CallRow) => string | number | null> = {
     name: (c) => c.originalName,
     rep: (c) => c.rep?.name ?? c.repName,
+    direction: (c) => DIRECTIONS[c.direction ?? ""]?.label ?? null,
     outcome: (c) => c.outcome,
     score: (c) => c.score,
     duration: (c) => c.durationSec,
@@ -152,7 +170,7 @@ export function CallTable() {
                     <tbody className="divide-y divide-secondary">
                         {calls.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="px-6 py-10 text-center text-tertiary">
+                                <td colSpan={8} className="px-6 py-10 text-center text-tertiary">
                                     No calls match these filters.
                                 </td>
                             </tr>
@@ -187,6 +205,9 @@ export function CallTable() {
                                             ) : (
                                                 "–"
                                             ))}
+                                    </td>
+                                    <td className="px-6 py-4 text-tertiary">
+                                        <Direction direction={call.direction} />
                                     </td>
                                     <td className="px-6 py-4 text-tertiary">{call.outcome ? <OutcomeBadge outcome={call.outcome} /> : "–"}</td>
                                     <td className="px-6 py-4 text-tertiary">

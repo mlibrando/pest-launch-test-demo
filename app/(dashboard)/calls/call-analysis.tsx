@@ -13,9 +13,9 @@ import { BADGE_CLASS, RetryButton, TierBadge, type CallRow } from "./call-status
 type Criterion = CallAnalysis["criteria"][number];
 
 const RESULT: Record<string, { label: string; className: string }> = {
-    PASS: { label: "Pass", className: "bg-success-secondary text-success-primary" },
-    AUTO_PASS: { label: "Auto-pass", className: "bg-success-secondary text-success-primary" },
-    FAIL: { label: "Fail", className: "bg-error-secondary text-error-primary" },
+    PASS: { label: "Pass", className: "bg-utility-green-50 text-utility-green-700" },
+    AUTO_PASS: { label: "Auto-pass", className: "bg-utility-green-50 text-utility-green-700" },
+    FAIL: { label: "Fail", className: "bg-utility-red-50 text-utility-red-700" },
     NA: { label: "Not applicable", className: "bg-secondary text-tertiary" },
 };
 

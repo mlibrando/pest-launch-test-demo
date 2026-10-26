@@ -114,7 +114,7 @@ export function DraftReviewPanel({ id, version, initialData, documentNames, comp
                           key={i}
                           className={cx(
                               "rounded px-0.5",
-                              filled ? "bg-success-secondary text-success-primary" : v?.varies ? "bg-secondary text-secondary" : "bg-warning-secondary text-warning-primary",
+                              filled ? "bg-utility-green-50 text-utility-green-700" : v?.varies ? "bg-secondary text-secondary" : "bg-utility-yellow-50 text-utility-yellow-700",
                           )}
                       >
                           {filled || part}
@@ -448,7 +448,7 @@ export function ResolvePill({ count }: { count: number }) {
         <span
             className={cx(
                 "rounded-full px-2 py-0.5 text-xs font-medium",
-                count > 0 ? "bg-warning-primary text-warning-primary" : "bg-success-secondary text-success-primary",
+                count > 0 ? "bg-warning-primary text-warning-primary" : "bg-utility-green-50 text-utility-green-700",
             )}
         >
             {count > 0 ? `${count} to resolve` : "All resolved"}

@@ -37,8 +37,8 @@ export function Card({
 
 const BADGE_TONES = {
     gray: "bg-secondary text-tertiary",
-    error: "bg-error-secondary text-error-primary",
-    warning: "bg-warning-secondary text-warning-primary",
+    error: "bg-utility-red-50 text-utility-red-700",
+    warning: "bg-utility-yellow-50 text-utility-yellow-700",
 };
 
 // Mirrors the Calls page badges; that BADGE_CLASS lives in a client module, so server components can't import its value.

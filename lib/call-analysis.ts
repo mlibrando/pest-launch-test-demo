@@ -6,6 +6,8 @@ import {
     checkClassification,
     classificationSchema,
     conditionsFor,
+    relocateAssessmentQuotes,
+    relocateClassificationQuotes,
     type Assessment,
     type Classification,
 } from "@/lib/analysis-schemas";
@@ -35,8 +37,18 @@ ${rubric.scorecards
 Decide whether each condition applies to this call, whichever scorecard you pick:
 ${conditionsFor(rubric).map((c) => `- ${c.id}: ${c.appliesWhen}`).join("\n")}
 
+Work out who placed the call from why it is happening, not from who speaks first. Speaker turns can be merged, so the first line may hold both people's words (e.g. the customer's "Hello?" followed by the rep's introduction).
+- INBOUND: the customer called in. The rep answers with a greeting like "Thanks for calling ${companyName}", and the customer explains why they called.
+- OUTBOUND: the rep called the customer. The rep says why they're calling: "I'm reaching out about...", "returning your call", "following up on...", "calling about the message/form you sent us". This holds even when the rep's introduction is the first line.
+
+Identify the rep next. Speaker letters only reflect who spoke first, so Speaker A is not necessarily the rep.
+- The rep is the one who speaks for ${companyName}: introduces themselves as working there, schedules visits, quotes prices, looks up the account. The customer asks about their own home and service.
+
 Rules:
-- agentSpeaker is the rep's speaker letter alone (e.g. "A", not "Speaker A").
+- directionEvidence: the line that shows who placed the call; null only when direction is UNKNOWN.
+- direction: INBOUND or OUTBOUND, or UNKNOWN if the call doesn't show who placed it.
+- agentEvidence: a line that shows which speaker is the rep, ideally their self-introduction.
+- agentSpeaker is the speaker letter of that line alone (e.g. "A", not "Speaker A").
 - repName is the name the rep introduces themselves with, or null if they never say it.
 - outcome is how the call ended, from the chosen scorecard's options, or null if it can't be told.
 - details: only what was actually said; null when it wasn't discussed. priceQuoted uses the exact amounts spoken.
@@ -134,9 +146,10 @@ async function runAnalysis(callId: string, attempts: AttemptLog[]) {
                 },
                 classificationSchema(rubric),
             );
-            const problems = checkClassification(result.data, transcript, rubric);
+            const data = relocateClassificationQuotes(result.data, transcript);
+            const problems = checkClassification(data, transcript, rubric);
             if (problems.length) throw new OutputIssues(problems, result.output);
-            return result;
+            return { ...result, data };
         },
         attempts,
         (attempt) => setProgress(callId, { stage: "classifying", attempt }),
@@ -171,9 +184,10 @@ Judge these criteria: ${toAssess.join(", ") || "none"}`;
                     },
                     assessmentSchema(toAssess, rubric.policies.length > 0),
                 );
-                const problems = checkAssessment(result.data, transcript, toAssess, agentSpeaker, rubric.policies.length);
+                const data = relocateAssessmentQuotes(result.data, transcript, agentSpeaker);
+                const problems = checkAssessment(data, transcript, toAssess, agentSpeaker, rubric.policies.length);
                 if (problems.length) throw new OutputIssues(problems, result.output);
-                return result;
+                return { ...result, data };
             },
             attempts,
             (attempt) => setProgress(callId, { stage: "assessing", attempt }),

@@ -18,10 +18,11 @@ function useCallUpload() {
     const [error, setError] = useState<string>();
     const [pending, startTransition] = useTransition();
 
-    const upload = (files: File[]) =>
+    const upload = (files: File[]) => {
+        // Outside the transition, so they render with the pending state instead of waiting for the upload to finish.
+        setError(undefined);
+        setFileCount(files.length);
         startTransition(async () => {
-            setError(undefined);
-            setFileCount(files.length);
             const prepared = await prepareCallUploads(files.map((f) => f.name));
             if (!prepared.uploads) return setError(prepared.error);
 
@@ -42,6 +43,7 @@ function useCallUpload() {
             if (uploaded.length && !saved.error) await queryClient.invalidateQueries({ queryKey: CALLS_QUERY_KEY });
             setError(saved.error ?? (failed ? `${failed} of ${files.length} files failed to upload.` : undefined));
         });
+    };
 
     const pendingLabel = `Uploading ${fileCount} file${fileCount === 1 ? "" : "s"}…`;
     return { upload, pending, pendingLabel, error };
