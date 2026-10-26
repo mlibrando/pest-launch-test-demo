@@ -2,29 +2,13 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-    AlertTriangle,
-    ArrowRight,
-    CalendarCheck01,
-    ClipboardCheck,
-    Clock,
-    Flag05,
-    HeartHand,
-    Lightbulb02,
-    MessageChatCircle,
-    PhoneCall01,
-    Star01,
-    Target04,
-    Tool02,
-    UploadCloud02,
-    Users01,
-} from "@untitledui/icons";
+import { AlertTriangle, ArrowRight, ClipboardCheck, Clock, UploadCloud02, Users01 } from "@untitledui/icons";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { getOverview, type OverviewData } from "@/app/actions/overview";
 import { Button } from "@/components/base/buttons/button";
-import { overviewQueryKey, parseRange, RANGES, type Overview, type RangeKey } from "@/lib/overview";
+import { firstAmount, overviewQueryKey, parseRange, RANGES, type Overview, type OverviewCall, type Rate, type RangeKey, type RepSummary } from "@/lib/overview";
 import { cx } from "@/utils/cx";
-import { Badge, Card, Delta, EmptyNote, formatPercent, KPI_GRID, KPI_SPANS, Meter, OverviewSkeleton, StatTile, TIER_SEGMENTS, TierBar } from "./overview-ui";
+import { Badge, Card, Delta, EmptyNote, formatMoney, formatPercent, KPI_LAST, KPI_STRIP, OverviewSkeleton, StatTile, TierBar } from "./overview-ui";
 import { TrendChart } from "./trend-chart";
 
 const CATEGORY_LABEL: Record<string, string> = { SALES: "Sales", RETENTION: "Retention", SERVICE: "Service" };
@@ -33,10 +17,11 @@ const OUTCOME_LABEL: Record<string, string> = { NOT_BOOKED: "Not booked", LOST: 
 const OVERVIEW_STALE_MS = 30_000;
 
 const dateFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" });
+const dateWithYearFormat = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 type Pipeline = OverviewData["pipeline"];
 
-export function OverviewContent() {
+function useOverview() {
     const range = parseRange(useSearchParams().get("range"));
     // Nested under the calls key, so anything that invalidates the call list (uploads, retries, rep changes,
     // a new rubric) refreshes the overview too. Switching ranges keeps the last one on screen until the new one lands.
@@ -48,6 +33,28 @@ export function OverviewContent() {
         // Mutations still invalidate immediately; this only spares quick back-and-forth navigation.
         staleTime: OVERVIEW_STALE_MS,
     });
+    return { range, query };
+}
+
+export function OverviewPeriod() {
+    const { query } = useOverview();
+    const overview = query.data?.overview;
+    if (!overview || query.data?.pipeline.total === 0) return <p className="h-6" />;
+
+    const start = new Date(overview.periodStart);
+    const today = new Date();
+    const startLabel = (start.getUTCFullYear() === today.getUTCFullYear() ? dateFormat : dateWithYearFormat).format(start);
+    const notScorable = overview.outcomes.NOT_SCORABLE;
+    return (
+        <p className="text-md text-tertiary">
+            {startLabel} – {dateFormat.format(today)} · {overview.calls.toLocaleString()} call{overview.calls === 1 ? "" : "s"} analyzed
+            {notScorable > 0 && <span title="Voicemails, wrong numbers and other calls with nothing to score">, {notScorable} not scorable</span>}
+        </p>
+    );
+}
+
+export function OverviewContent() {
+    const { range, query } = useOverview();
 
     if (!query.data) return query.isError ? <p className="text-sm text-error-primary">{query.error.message}</p> : <OverviewSkeleton />;
 
@@ -55,7 +62,7 @@ export function OverviewContent() {
     if (pipeline.total === 0) return <NoCallsYet />;
 
     const periodLabel = RANGES[range].label.toLowerCase();
-    const emptyPeriod = range === "all" ? "No analyzed calls yet." : `No analyzed calls in the last ${periodLabel}.`;
+    const empty = range === "all" ? "No analyzed calls yet." : `No analyzed calls in the last ${periodLabel}.`;
 
     return (
         <div
@@ -63,23 +70,17 @@ export function OverviewContent() {
             className={cx("flex flex-col gap-6 transition-opacity", query.isPlaceholderData && "pointer-events-none opacity-60")}
         >
             <AttentionStrip pipeline={pipeline} />
-            <KpiRow overview={overview} range={range} />
+            <KpiStrip overview={overview} range={range} />
+            <MissedCard overview={overview} />
+            <RepTable overview={overview} empty={empty} />
+
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+                <CoachingCard overview={overview} className="xl:col-span-2" />
+                <PolicyCard overview={overview} />
+            </div>
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
                 <TrendChart className="xl:col-span-2" trend={overview.trend} granularity={overview.granularity} />
-                <TierCard overview={overview} empty={emptyPeriod} />
-            </div>
-
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-                <OutcomesCard overview={overview} periodLabel={range === "all" ? null : periodLabel} empty={emptyPeriod} />
-                <MissedCard overview={overview} className="xl:col-span-2" />
-            </div>
-
-            <RepTable overview={overview} empty={emptyPeriod} />
-
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-                <CoachingCard overview={overview} />
-                <PolicyCard overview={overview} />
                 <PestCard overview={overview} />
             </div>
         </div>
@@ -93,10 +94,8 @@ function NoCallsYet() {
                 <UploadCloud02 className="size-6 text-fg-tertiary" />
             </span>
             <div className="flex max-w-md flex-col gap-1">
-                <h2 className="text-lg font-semibold text-primary">Your overview fills in as calls are analyzed</h2>
-                <p className="text-sm text-tertiary">
-                    Upload call recordings to see quality scores, booking and save rates, rep performance, and what to coach on next.
-                </p>
+                <h2 className="text-lg font-semibold text-primary">No calls analyzed yet</h2>
+                <p className="text-sm text-tertiary">Upload call recordings to see quality scores, booking and save rates, and rep performance here.</p>
             </div>
             <Button href="/calls" size="md" iconTrailing={<ArrowRight data-icon />}>
                 Go to Calls
@@ -107,25 +106,26 @@ function NoCallsYet() {
 
 /** Only shows when something needs the admin: failures, a stalled queue, reps to confirm, or no rubric to score against. */
 function AttentionStrip({ pipeline }: { pipeline: Pipeline }) {
+    const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
     const items = [
         !pipeline.hasActiveRubric && {
             icon: ClipboardCheck,
-            text: "No active rubric set, so new calls won't be scored",
+            text: "No active rubric, so new calls won't be scored",
             tone: "warning",
         },
         pipeline.failed > 0 && {
             icon: AlertTriangle,
-            text: `${pipeline.failed} call${pipeline.failed === 1 ? "" : "s"} failed processing`,
+            text: `${plural(pipeline.failed, "call", "calls")} failed processing`,
             tone: "error",
         },
         pipeline.processing > 0 && {
             icon: Clock,
-            text: `${pipeline.processing} call${pipeline.processing === 1 ? " is" : "s are"} waiting to be processed. Open Calls to keep them moving`,
+            text: `${plural(pipeline.processing, "call is", "calls are")} queued. Processing runs while the Calls page is open`,
             tone: "brand",
         },
         pipeline.spokenNames > 0 && {
             icon: Users01,
-            text: `${pipeline.spokenNames} call${pipeline.spokenNames === 1 ? " has a rep name" : "s have rep names"} to confirm`,
+            text: `${plural(pipeline.spokenNames, "call needs its", "calls need their")} rep confirmed`,
             tone: "warning",
         },
     ].filter((item) => item !== false);
@@ -149,277 +149,255 @@ function AttentionStrip({ pipeline }: { pipeline: Pipeline }) {
                 ))}
             </ul>
             <Button href="/calls" size="sm" color="link-gray" iconTrailing={<ArrowRight data-icon />}>
-                Review calls
+                Open Calls
             </Button>
         </section>
     );
 }
 
-function KpiRow({ overview, range }: { overview: Overview; range: RangeKey }) {
+function KpiStrip({ overview, range }: { overview: Overview; range: RangeKey }) {
     const periodLabel = RANGES[range].label.toLowerCase();
     const hasPrevious = range !== "all";
-    const { SALES, RETENTION } = overview.outcomes;
-    const rateDelta = (current: number | null, previous: number | null) =>
-        hasPrevious && <Delta current={current} previous={previous} unit="points" goodWhen="up" periodLabel={periodLabel} />;
+    const { SALES, RETENTION, SERVICE } = overview.outcomes;
+    const { GOLD, GREEN, BELOW } = overview.tiers;
+    const greenOrBetter = overview.scored ? Math.round(((GOLD + GREEN) / overview.scored) * 100) : null;
+
+    const rateTile = (label: string, o: (typeof overview.outcomes)["SALES"], what: string, verb: string) => (
+        <StatTile
+            label={label}
+            value={formatPercent(o.rate)}
+            detail={o.total ? `${o.wins} of ${o.total} ${what}${o.total === 1 ? "" : "s"} ${verb}` : `No ${what}s`}
+            delta={hasPrevious && <Delta current={o.rate} previous={o.previousRate} unit="points" goodWhen="up" periodLabel={periodLabel} samples={[o.total, o.previousTotal]} />}
+        />
+    );
 
     return (
-        <section aria-label="Key metrics" className={KPI_GRID}>
+        <section aria-label="Key metrics" className={KPI_STRIP}>
             <StatTile
-                label="Calls analyzed"
-                className={KPI_SPANS[0]}
-                icon={PhoneCall01}
-                value={overview.calls.toLocaleString()}
-                detail={overview.outcomes.NOT_SCORABLE > 0 ? `${overview.outcomes.NOT_SCORABLE} not scorable (voicemail, wrong number…)` : undefined}
-                delta={hasPrevious && <Delta current={overview.calls} previous={overview.previousCalls} unit="count" goodWhen="neutral" periodLabel={periodLabel} />}
-            />
-            <StatTile
-                label="Avg. quality score"
-                className={KPI_SPANS[1]}
-                icon={Star01}
+                label="Quality score"
                 value={formatPercent(overview.avgScore)}
-                detail="Rubric criteria passed"
-                delta={rateDelta(overview.avgScore, overview.previousAvgScore)}
-            />
-            <StatTile
-                label="Booking rate"
-                className={KPI_SPANS[2]}
-                icon={CalendarCheck01}
-                value={formatPercent(SALES.rate)}
-                detail={SALES.total ? `${SALES.wins} of ${SALES.total} sales call${SALES.total === 1 ? "" : "s"} booked` : "No sales calls"}
-                delta={SALES.total > 0 && rateDelta(SALES.rate, SALES.previousRate)}
-            />
-            <StatTile
-                label="Save rate"
-                className={KPI_SPANS[3]}
-                icon={HeartHand}
-                value={formatPercent(RETENTION.rate)}
-                detail={RETENTION.total ? `${RETENTION.wins} of ${RETENTION.total} cancellation${RETENTION.total === 1 ? "" : "s"} saved` : "No cancellation calls"}
-                delta={RETENTION.total > 0 && rateDelta(RETENTION.rate, RETENTION.previousRate)}
-            />
-            <StatTile
-                label="Policy flags"
-                className={KPI_SPANS[4]}
-                icon={Flag05}
-                value={overview.flags.violations.toLocaleString()}
-                detail={overview.flags.calls ? `Across ${overview.flags.calls} call${overview.flags.calls === 1 ? "" : "s"}` : "No policy issues"}
+                detail={greenOrBetter === null ? "No scored calls" : `${greenOrBetter}% of scored calls at Green or better`}
                 delta={
                     hasPrevious && (
-                        <Delta current={overview.flags.violations} previous={overview.flags.previousViolations} unit="count" goodWhen="down" periodLabel={periodLabel} />
+                        <Delta
+                            current={overview.avgScore}
+                            previous={overview.previousAvgScore}
+                            unit="points"
+                            goodWhen="up"
+                            periodLabel={periodLabel}
+                            samples={[overview.scored, overview.previousScored]}
+                        />
                     )
+                }
+            >
+                {overview.scored > 0 && (
+                    <div className="flex flex-col gap-1.5 pt-1">
+                        <TierBar tiers={{ ...overview.tiers, unscored: 0 }} />
+                        <p className="text-xs text-tertiary tabular-nums">
+                            {GOLD} Gold, {GREEN} Green, {BELOW} Below
+                        </p>
+                    </div>
+                )}
+            </StatTile>
+            {rateTile("Booking rate", SALES, "sales call", "booked")}
+            {rateTile("Save rate", RETENTION, "cancellation", "saved")}
+            {rateTile("Resolution rate", SERVICE, "service call", "resolved")}
+            <StatTile
+                className={KPI_LAST}
+                label="Calls with policy flags"
+                value={overview.flags.calls.toLocaleString()}
+                detail={
+                    overview.flags.calls
+                        ? `${overview.flags.violations} flag${overview.flags.violations === 1 ? "" : "s"} in total`
+                        : "No company rules broken"
+                }
+                delta={
+                    hasPrevious && <Delta current={overview.flags.calls} previous={overview.flags.previousCalls} unit="count" goodWhen="down" periodLabel={periodLabel} />
                 }
             />
         </section>
     );
 }
 
-function TierCard({ overview, empty }: { overview: Overview; empty: string }) {
-    const scored = overview.tiers.GOLD + overview.tiers.GREEN + overview.tiers.BELOW;
-    const greenOrBetter = scored ? Math.round(((overview.tiers.GOLD + overview.tiers.GREEN) / scored) * 100) : null;
+/** Who the call was with: the customer's name when it was said, otherwise what they called about. */
+function callHeadline(call: OverviewCall) {
+    if (call.details?.customerName) return { text: call.details.customerName, named: true };
+    const about = [call.details?.pestType, call.details?.serviceRequested].filter(Boolean).join(", ");
+    return { text: about || "Unnamed caller", named: false };
+}
 
+function MissedCard({ overview }: { overview: Overview }) {
+    const { total, quoted, quotedCalls, calls } = overview.missed;
     return (
-        <Card title="Quality tiers" description="How scored calls landed against the rubric" icon={Target04}>
-            {overview.calls === 0 ? (
-                <EmptyNote>{empty}</EmptyNote>
-            ) : (
-                <div className="flex flex-1 flex-col gap-5">
-                    <div>
-                        <p className="text-display-md font-semibold text-primary">{greenOrBetter === null ? "–" : `${greenOrBetter}%`}</p>
-                        <p className="text-sm text-tertiary">of scored calls at Green or better</p>
+        <Card
+            flush
+            title="Missed opportunities"
+            description={total ? `${total} call${total === 1 ? "" : "s"} that didn't book, save or resolve. Newest first.` : undefined}
+            action={
+                quoted > 0 && (
+                    <div className="text-right" title="The first amount quoted on each call; recurring prices count once">
+                        <p className="text-display-xs font-semibold text-primary tabular-nums">{formatMoney(quoted)}</p>
+                        <p className="text-xs text-tertiary">
+                            quoted on {quotedCalls} of {total} call{total === 1 ? "" : "s"}
+                        </p>
                     </div>
-                    <TierBar tiers={overview.tiers} className="h-3" />
-                    <dl className="flex flex-col gap-2.5">
-                        {TIER_SEGMENTS.map((s) => (
-                            <div key={s.key} className="flex items-center gap-2 text-sm">
-                                <span className={cx("size-2.5 rounded-full", s.swatch)} aria-hidden />
-                                <dt className="flex-1 text-secondary">{s.label}</dt>
-                                <dd className="font-medium text-primary tabular-nums">{overview.tiers[s.key]}</dd>
-                                <dd className="w-12 text-right text-tertiary tabular-nums">
-                                    {overview.calls ? `${Math.round((overview.tiers[s.key] / overview.calls) * 100)}%` : "–"}
-                                </dd>
-                            </div>
-                        ))}
-                    </dl>
+                )
+            }
+        >
+            {calls.length === 0 ? (
+                <EmptyNote className="mx-6 mb-6">No missed opportunities in this period.</EmptyNote>
+            ) : (
+                <div>
+                    <div className="hidden grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,10rem)] gap-6 border-y border-secondary bg-secondary px-6 py-2.5 text-xs font-medium text-tertiary md:grid">
+                        <span>Customer</span>
+                        <span>What happened</span>
+                        <span className="text-right">Quoted</span>
+                    </div>
+                    <ul className="divide-y divide-secondary border-t border-secondary md:border-t-0">
+                        {calls.map((call) => {
+                            const headline = callHeadline(call);
+                            return (
+                                <li key={call.id}>
+                                    <Link
+                                        href={`/calls?call=${call.id}`}
+                                        title={call.originalName}
+                                        className="group grid gap-x-6 gap-y-2 px-6 py-4 outline-focus-ring -outline-offset-2 hover:bg-primary_hover focus-visible:outline-2 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_minmax(0,10rem)]"
+                                    >
+                                        <div className="flex min-w-0 flex-col gap-0.5">
+                                            <span
+                                                className={cx(
+                                                    "line-clamp-2 text-sm font-medium group-hover:underline first-letter:uppercase",
+                                                    headline.named ? "text-primary" : "text-secondary",
+                                                )}
+                                            >
+                                                {headline.text}
+                                            </span>
+                                            <span className="text-xs text-tertiary">
+                                                {[call.rep ?? call.unmatchedRepName ?? "No rep", dateFormat.format(call.date)].join(", ")}
+                                            </span>
+                                        </div>
+                                        <div className="flex min-w-0 flex-col gap-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <Badge tone="error">{OUTCOME_LABEL[call.outcome ?? ""]}</Badge>
+                                                {call.category && <span className="text-xs text-tertiary">{CATEGORY_LABEL[call.category]}</span>}
+                                            </div>
+                                            {call.outcomeReason && <p className="line-clamp-2 text-sm text-secondary">{call.outcomeReason}</p>}
+                                            {call.details?.followUp && (
+                                                <p className="line-clamp-1 text-xs text-tertiary">
+                                                    <span className="font-medium">Follow-up:</span> {call.details.followUp}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Quote priceQuoted={call.details?.priceQuoted} />
+                                    </Link>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                    {total > calls.length && (
+                        <p className="border-t border-secondary px-6 py-3 text-xs text-tertiary">
+                            Showing the {calls.length} most recent of {total}.
+                        </p>
+                    )}
                 </div>
             )}
         </Card>
     );
 }
 
-function OutcomesCard({ overview, periodLabel, empty }: { overview: Overview; periodLabel: string | null; empty: string }) {
-    const rows = [
-        { key: "SALES", icon: CalendarCheck01, win: "booked" },
-        { key: "RETENTION", icon: HeartHand, win: "saved" },
-        { key: "SERVICE", icon: Tool02, win: "resolved" },
-    ] as const;
-
+/** The amount the customer heard first, with the full quote underneath since it often has plans and discounts. */
+function Quote({ priceQuoted }: { priceQuoted: string | null | undefined }) {
+    if (!priceQuoted) return <p className="text-sm text-quaternary md:text-right">–</p>;
+    const amount = firstAmount(priceQuoted);
     return (
-        <Card title="Outcomes by call type" description="Share of calls that ended in a win" icon={PhoneCall01}>
-            {overview.calls === 0 ? (
-                <EmptyNote>{empty}</EmptyNote>
-            ) : (
-                <ul className="flex flex-col gap-5">
-                    {rows.map(({ key, icon: Icon, win }) => {
-                        const o = overview.outcomes[key];
-                        return (
-                            <li key={key} className="flex flex-col gap-2">
-                                <div className="flex items-baseline justify-between gap-3">
-                                    <p className="flex items-center gap-2 text-sm font-medium text-secondary">
-                                        <Icon className="size-4 text-fg-quaternary" />
-                                        {CATEGORY_LABEL[key]}
-                                    </p>
-                                    <p className="text-lg font-semibold text-primary">{formatPercent(o.rate)}</p>
-                                </div>
-                                <Meter value={o.rate ?? 0} label={`${CATEGORY_LABEL[key]} ${win} rate`} />
-                                <div className="flex flex-wrap items-center justify-between gap-x-3 text-xs text-tertiary">
-                                    <span>{o.total ? `${o.wins} of ${o.total} ${win}` : "No calls"}</span>
-                                    {periodLabel && o.total > 0 && (
-                                        <Delta current={o.rate} previous={o.previousRate} unit="points" goodWhen="up" periodLabel={periodLabel} />
-                                    )}
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ul>
-            )}
-        </Card>
+        <div className="flex flex-col gap-0.5 md:items-end md:text-right">
+            {amount !== null && <p className="text-sm font-semibold text-primary tabular-nums">{formatMoney(amount)}</p>}
+            <p className="line-clamp-2 text-xs text-tertiary" title={priceQuoted}>
+                {priceQuoted}
+            </p>
+        </div>
     );
 }
 
-function MissedCard({ overview, className }: { overview: Overview; className?: string }) {
-    const { total, calls } = overview.missed;
+function RateCell({ rate }: { rate: Rate }) {
+    if (!rate.total) return <span className="text-quaternary">–</span>;
     return (
-        <Card
-            className={className}
-            title="Missed opportunities"
-            description="Unbooked sales, lost cancellations and unresolved issues worth a follow-up"
-            icon={AlertTriangle}
-            action={
-                total > calls.length && (
-                    <Button href="/calls" size="sm" color="link-gray" iconTrailing={<ArrowRight data-icon />}>
-                        All {total}
-                    </Button>
-                )
-            }
-        >
-            {calls.length === 0 ? (
-                <EmptyNote>Nothing slipped through. Every analyzed call ended in a win.</EmptyNote>
-            ) : (
-                <ul className="-mx-2 flex flex-col">
-                    {calls.map((call) => (
-                        <li key={call.id}>
-                            <Link
-                                href={`/calls?call=${call.id}`}
-                                className="group flex flex-col gap-1.5 rounded-lg px-2 py-3 outline-focus-ring hover:bg-primary_hover focus-visible:outline-2"
-                            >
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                    <Badge tone="error">{OUTCOME_LABEL[call.outcome ?? ""]}</Badge>
-                                    <span className="text-sm font-medium text-primary group-hover:underline">{call.originalName}</span>
-                                    <span className="text-xs text-tertiary">
-                                        {[call.category && CATEGORY_LABEL[call.category], call.rep ?? call.unmatchedRepName, dateFormat.format(call.date)]
-                                            .filter(Boolean)
-                                            .join(" · ")}
-                                    </span>
-                                    <ArrowRight className="ml-auto size-4 text-fg-quaternary opacity-0 transition group-hover:opacity-100" aria-hidden />
-                                </div>
-                                {call.outcomeReason && <p className="line-clamp-2 text-sm text-secondary">{call.outcomeReason}</p>}
-                                {(call.details?.followUp || call.details?.priceQuoted) && (
-                                    <dl className="flex flex-col gap-0.5 text-xs">
-                                        {call.details.followUp && (
-                                            <div className="flex gap-1.5">
-                                                <dt className="shrink-0 font-medium text-tertiary">Follow-up</dt>
-                                                <dd className="line-clamp-1 text-secondary">{call.details.followUp}</dd>
-                                            </div>
-                                        )}
-                                        {call.details.priceQuoted && (
-                                            <div className="flex gap-1.5">
-                                                <dt className="shrink-0 font-medium text-tertiary">Quoted</dt>
-                                                <dd className="line-clamp-1 text-secondary">{call.details.priceQuoted}</dd>
-                                            </div>
-                                        )}
-                                    </dl>
-                                )}
-                            </Link>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </Card>
+        <>
+            <span className="font-medium text-primary">{formatPercent(rate.rate)}</span>
+            <span className="text-tertiary">
+                {" "}
+                {rate.wins}/{rate.total}
+            </span>
+        </>
     );
 }
+
+const repHref = (rep: RepSummary) =>
+    rep.kind === "unassigned" ? null : `/calls?${new URLSearchParams({ [rep.kind === "rep" ? "rep" : "spoken"]: rep.name })}`;
 
 function RepTable({ overview, empty }: { overview: Overview; empty: string }) {
     return (
-        <Card title="Rep performance" description="Scores, conversions and the skill each rep misses most" icon={Users01}>
+        <Card flush title="Rep performance">
             {overview.reps.length === 0 ? (
-                <EmptyNote>{empty}</EmptyNote>
+                <EmptyNote className="mx-6 mb-6">{empty}</EmptyNote>
             ) : (
-                <div className="-mx-6 overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-left text-sm">
+                <div className="overflow-x-auto">
+                    <table className="w-full min-w-[820px] text-left text-sm">
                         <thead className="border-y border-secondary bg-secondary text-xs text-tertiary">
                             <tr>
-                                <th scope="col" className="px-6 py-3 font-medium">Rep</th>
-                                <th scope="col" className="px-4 py-3 text-right font-medium">Calls</th>
-                                <th scope="col" className="px-4 py-3 font-medium">Avg. score</th>
-                                <th scope="col" className="px-4 py-3 font-medium">Tiers</th>
-                                <th scope="col" className="px-4 py-3 font-medium" title="Sales booked plus cancellations saved">
-                                    Conversion
-                                </th>
-                                <th scope="col" className="px-4 py-3 text-right font-medium">Flags</th>
-                                <th scope="col" className="px-6 py-3 font-medium">Most missed</th>
+                                <th scope="col" className="px-6 py-2.5 font-medium">Rep</th>
+                                <th scope="col" className="px-4 py-2.5 text-right font-medium">Calls</th>
+                                <th scope="col" className="px-4 py-2.5 text-right font-medium">Avg. score</th>
+                                <th scope="col" className="px-4 py-2.5 font-medium">Tiers</th>
+                                <th scope="col" className="px-4 py-2.5 font-medium">Booked</th>
+                                <th scope="col" className="px-4 py-2.5 font-medium">Saved</th>
+                                <th scope="col" className="px-4 py-2.5 text-right font-medium">Flags</th>
+                                <th scope="col" className="px-6 py-2.5 font-medium">Misses most</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-secondary">
-                            {overview.reps.map((rep) => (
-                                <tr key={`${rep.kind}:${rep.name}`}>
-                                    <th scope="row" className="px-6 py-4 font-medium">
-                                        <span className="flex items-center gap-2">
-                                            <span
-                                                className={cx(
-                                                    "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                                                    rep.kind === "rep" ? "bg-brand-secondary text-brand-secondary" : "bg-secondary text-quaternary",
+                            {overview.reps.map((rep) => {
+                                const href = repHref(rep);
+                                return (
+                                    <tr key={`${rep.kind}:${rep.name}`} className="hover:bg-primary_hover">
+                                        <th scope="row" className="px-6 py-3.5 font-medium">
+                                            <span className="flex items-center gap-2">
+                                                {href ? (
+                                                    <Link href={href} className="text-primary outline-focus-ring hover:underline focus-visible:outline-2">
+                                                        {rep.name}
+                                                    </Link>
+                                                ) : (
+                                                    <span className="text-tertiary">{rep.name}</span>
                                                 )}
-                                                aria-hidden
-                                            >
-                                                {rep.kind === "unassigned" ? "?" : rep.name.charAt(0).toUpperCase()}
+                                                {rep.kind === "spoken" && (
+                                                    <Badge tone="warning" title="Heard on the call, not confirmed as one of your reps">
+                                                        Unconfirmed
+                                                    </Badge>
+                                                )}
                                             </span>
-                                            <span className={rep.kind === "unassigned" ? "text-tertiary" : "text-primary"}>{rep.name}</span>
-                                            {rep.kind === "spoken" && (
-                                                <Badge tone="warning" title="Heard on the call, not confirmed as one of your reps">
-                                                    Unconfirmed
-                                                </Badge>
-                                            )}
-                                        </span>
-                                    </th>
-                                    <td className="px-4 py-4 text-right text-secondary tabular-nums">{rep.calls}</td>
-                                    <td className="px-4 py-4">
-                                        <span className="flex items-center gap-3">
-                                            <span className="w-12 font-medium text-primary tabular-nums">{formatPercent(rep.avgScore)}</span>
-                                            {rep.avgScore !== null && <Meter value={rep.avgScore} label={`${rep.name} average score`} className="w-20" />}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-4">
-                                        <TierBar tiers={rep.tiers} className="w-24" />
-                                    </td>
-                                    <td className="px-4 py-4 text-secondary tabular-nums">
-                                        {rep.conversion.total ? (
-                                            <>
-                                                <span className="font-medium text-primary">{formatPercent(rep.conversion.rate)}</span>
-                                                <span className="text-tertiary"> · {rep.conversion.wins}/{rep.conversion.total}</span>
-                                            </>
-                                        ) : (
-                                            <span className="text-quaternary">–</span>
-                                        )}
-                                    </td>
-                                    <td className={cx("px-4 py-4 text-right tabular-nums", rep.flags ? "font-medium text-warning-primary" : "text-quaternary")}>
-                                        {rep.flags || "–"}
-                                    </td>
-                                    <td className="max-w-64 px-6 py-4 text-secondary">
-                                        <span className="line-clamp-1" title={rep.topMiss ?? undefined}>
-                                            {rep.topMiss ?? <span className="text-quaternary">–</span>}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
+                                        </th>
+                                        <td className="px-4 py-3.5 text-right text-secondary tabular-nums">{rep.calls}</td>
+                                        <td className="px-4 py-3.5 text-right font-medium text-primary tabular-nums">{formatPercent(rep.avgScore)}</td>
+                                        <td className="px-4 py-3.5">
+                                            <TierBar tiers={rep.tiers} className="w-24" />
+                                        </td>
+                                        <td className="px-4 py-3.5 tabular-nums">
+                                            <RateCell rate={rep.booking} />
+                                        </td>
+                                        <td className="px-4 py-3.5 tabular-nums">
+                                            <RateCell rate={rep.saves} />
+                                        </td>
+                                        <td className={cx("px-4 py-3.5 text-right tabular-nums", rep.flags ? "font-medium text-warning-primary" : "text-quaternary")}>
+                                            {rep.flags || "–"}
+                                        </td>
+                                        <td className="max-w-64 px-6 py-3.5 text-secondary">
+                                            <span className="line-clamp-1 first-letter:uppercase" title={rep.topMiss ?? undefined}>
+                                                {rep.topMiss ?? <span className="text-quaternary">–</span>}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -428,28 +406,30 @@ function RepTable({ overview, empty }: { overview: Overview; empty: string }) {
     );
 }
 
-function CoachingCard({ overview }: { overview: Overview }) {
+function CoachingCard({ overview, className }: { overview: Overview; className?: string }) {
     return (
-        <Card title="Coaching focus" description="Rubric criteria missed most often" icon={Lightbulb02}>
+        <Card title="Coaching focus" description="The rubric items reps miss most" className={className}>
             {overview.coaching.length === 0 ? (
-                <EmptyNote>No missed criteria in this period.</EmptyNote>
+                <EmptyNote>No missed rubric items in this period.</EmptyNote>
             ) : (
-                <ol className="flex flex-col gap-4">
-                    {overview.coaching.map((c) => {
-                        const failRate = Math.round((c.fails / c.assessed) * 100);
-                        return (
-                            <li key={c.key} className="flex flex-col gap-1.5">
-                                <div className="flex items-start justify-between gap-3">
-                                    <p className="text-sm font-medium text-primary first-letter:uppercase">{c.label}</p>
-                                    {c.category && <Badge tone="gray">{CATEGORY_LABEL[c.category]}</Badge>}
-                                </div>
-                                <Meter value={failRate} tone="error" label={`${c.label} miss rate`} />
-                                <p className="text-xs text-tertiary">
-                                    Missed in {c.fails} of {c.assessed} call{c.assessed === 1 ? "" : "s"} ({failRate}%)
-                                </p>
-                            </li>
-                        );
-                    })}
+                <ol className="flex flex-col divide-y divide-secondary">
+                    {overview.coaching.map((c) => (
+                        <li key={c.key} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-6">
+                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                <p className="text-sm font-medium text-primary first-letter:uppercase">{c.label}</p>
+                                {c.reps.length > 0 && (
+                                    <p className="text-xs text-tertiary">
+                                        Mostly {c.reps.slice(0, 3).join(", ")}
+                                        {c.reps.length > 3 && ` and ${c.reps.length - 3} more`}
+                                    </p>
+                                )}
+                            </div>
+                            <p className="shrink-0 text-sm text-secondary tabular-nums sm:text-right">
+                                Missed on <span className="font-medium text-primary">{c.fails}</span> of {c.assessed}
+                                {c.category && <span className="text-tertiary"> {CATEGORY_LABEL[c.category].toLowerCase()} calls</span>}
+                            </p>
+                        </li>
+                    ))}
                 </ol>
             )}
         </Card>
@@ -458,9 +438,9 @@ function CoachingCard({ overview }: { overview: Overview }) {
 
 function PolicyCard({ overview }: { overview: Overview }) {
     return (
-        <Card title="Policy flags" description="Company rules broken on calls" icon={Flag05}>
+        <Card title="Policy flags">
             {overview.policies.length === 0 ? (
-                <EmptyNote>No policy issues in this period.</EmptyNote>
+                <EmptyNote>No company rules broken in this period.</EmptyNote>
             ) : (
                 <ul className="flex flex-col divide-y divide-secondary">
                     {overview.policies.slice(0, 5).map((p) => (
@@ -468,9 +448,9 @@ function PolicyCard({ overview }: { overview: Overview }) {
                             <p className="line-clamp-2 text-sm text-secondary" title={p.rule}>
                                 {p.rule}
                             </p>
-                            <Badge tone="warning">
+                            <span className="shrink-0 text-sm font-medium whitespace-nowrap text-warning-primary tabular-nums">
                                 {p.calls} call{p.calls === 1 ? "" : "s"}
-                            </Badge>
+                            </span>
                         </li>
                     ))}
                 </ul>
@@ -482,7 +462,7 @@ function PolicyCard({ overview }: { overview: Overview }) {
 function PestCard({ overview }: { overview: Overview }) {
     const max = Math.max(...overview.pestTypes.map((p) => p.calls));
     return (
-        <Card title="What customers call about" description="Pests mentioned on analyzed calls" icon={MessageChatCircle}>
+        <Card title="Pests mentioned">
             {overview.pestTypes.length === 0 ? (
                 <EmptyNote>No pests mentioned in this period.</EmptyNote>
             ) : (

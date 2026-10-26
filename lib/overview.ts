@@ -38,7 +38,13 @@ export type OverviewCall = {
     rep: string | null;
     /** The name the rep introduced themselves with, when it doesn't match one of the company's reps. */
     unmatchedRepName: string | null;
-    details: { pestType?: string | null; priceQuoted?: string | null; followUp?: string | null } | null;
+    details: {
+        customerName?: string | null;
+        pestType?: string | null;
+        serviceRequested?: string | null;
+        priceQuoted?: string | null;
+        followUp?: string | null;
+    } | null;
     criteria: { criterionId: string; result: string }[];
     violations: { rule: string }[];
 };
@@ -58,26 +64,36 @@ export type RepSummary = {
     calls: number;
     avgScore: number | null;
     tiers: TierCounts;
-    conversion: Rate;
+    booking: Rate;
+    saves: Rate;
     flags: number;
     topMiss: string | null;
 };
 
+/** Fewer calls than this on either side of a comparison and the change is mostly noise, so it isn't shown. */
+export const MIN_COMPARABLE = 5;
+
 export type Overview = {
+    /** When the period starts: the range's first day, or the earliest call for all time. */
+    periodStart: string;
     calls: number;
     previousCalls: number | null;
     avgScore: number | null;
     previousAvgScore: number | null;
+    /** How many calls each average is over, so small samples can be left out of comparisons. */
+    scored: number;
+    previousScored: number | null;
     tiers: TierCounts;
-    outcomes: Record<Exclude<Category, "NOT_SCORABLE">, Rate & { previousRate: number | null }> & { NOT_SCORABLE: number };
-    flags: { violations: number; calls: number; previousViolations: number | null };
+    outcomes: Record<Exclude<Category, "NOT_SCORABLE">, Rate & { previousRate: number | null; previousTotal: number | null }> & { NOT_SCORABLE: number };
+    flags: { violations: number; calls: number; previousCalls: number | null };
     granularity: "day" | "week" | "month";
     trend: TrendBucket[];
     reps: RepSummary[];
-    coaching: { key: string; label: string; category: Category | null; fails: number; assessed: number }[];
+    coaching: { key: string; label: string; category: Category | null; fails: number; assessed: number; reps: string[] }[];
     policies: { rule: string; calls: number }[];
     pestTypes: { name: string; calls: number }[];
-    missed: { total: number; calls: OverviewCall[] };
+    /** `quoted` sums the first amount quoted on each missed call that had one. */
+    missed: { total: number; quoted: number; quotedCalls: number; calls: OverviewCall[] };
 };
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
@@ -98,7 +114,7 @@ function tierCounts(calls: OverviewCall[]): TierCounts {
 
 /** Criteria failed most often across the calls, keyed by scorecard so same-named criteria on different scorecards stay apart. */
 function criterionFails(calls: OverviewCall[], labelFor: CriterionLabel) {
-    const byKey = new Map<string, Overview["coaching"][number]>();
+    const byKey = new Map<string, Overview["coaching"][number] & { repFails: Map<string, number> }>();
     for (const call of calls) {
         if (!call.scorecard) continue;
         for (const { criterionId, result } of call.criteria) {
@@ -110,13 +126,34 @@ function criterionFails(calls: OverviewCall[], labelFor: CriterionLabel) {
                 category: categoryForCallType(call.scorecard),
                 fails: 0,
                 assessed: 0,
+                reps: [],
+                repFails: new Map(),
             };
             entry.assessed++;
-            if (result === "FAIL") entry.fails++;
+            if (result === "FAIL") {
+                entry.fails++;
+                const rep = call.rep ?? call.unmatchedRepName;
+                if (rep) entry.repFails.set(rep, (entry.repFails.get(rep) ?? 0) + 1);
+            }
             byKey.set(key, entry);
         }
     }
-    return [...byKey.values()].filter((e) => e.fails > 0).sort((a, b) => b.fails - a.fails || b.fails / b.assessed - a.fails / a.assessed);
+    return [...byKey.values()]
+        .filter((e) => e.fails > 0)
+        .sort((a, b) => b.fails - a.fails || b.fails / b.assessed - a.fails / a.assessed)
+        .map(({ repFails, ...entry }) => ({
+            ...entry,
+            // The reps who miss it most, so the coaching has someone to go to.
+            reps: [...repFails].sort((a, b) => b[1] - a[1]).map(([name]) => name),
+        }));
+}
+
+/** "$129 initial, $49/month" → 129. The first amount is what the customer heard first; null when there's no number. */
+export function firstAmount(priceQuoted: string | null | undefined) {
+    const match = priceQuoted?.match(/\d[\d,]*(?:\.\d+)?/);
+    if (!match) return null;
+    const amount = Number(match[0].replaceAll(",", ""));
+    return Number.isFinite(amount) ? amount : null;
 }
 
 function bucketStart(date: Date, granularity: Overview["granularity"]) {
@@ -160,26 +197,23 @@ export function summarizeOverview(calls: OverviewCall[], range: RangeKey, now: D
     const spanDays = (now.getTime() - from.getTime()) / DAY_MS;
     const granularity = spanDays <= 31 ? "day" : spanDays <= 26 * 7 ? "week" : "month";
 
-    const outcome = (category: keyof typeof WIN_OUTCOME) => ({
-        ...rate(current, category),
-        previousRate: previous ? rate(previous, category).rate : null,
-    });
+    const outcome = (category: keyof typeof WIN_OUTCOME) => {
+        const before = previous && rate(previous, category);
+        return { ...rate(current, category), previousRate: before?.rate ?? null, previousTotal: before?.total ?? null };
+    };
 
     // Keyed by whether the rep is assigned too, so an unconfirmed spoken name never merges into a real rep's numbers.
     const repGroups = Map.groupBy(current, (c) => (c.rep ? `rep:${c.rep}` : `spoken:${c.unmatchedRepName ?? ""}`));
     const reps: RepSummary[] = [...repGroups.values()].map((repCalls) => {
         const { rep, unmatchedRepName } = repCalls[0];
-        const sales = rate(repCalls, "SALES");
-        const retention = rate(repCalls, "RETENTION");
-        const wins = sales.wins + retention.wins;
-        const total = sales.total + retention.total;
         return {
             name: rep ?? unmatchedRepName ?? "Unassigned",
             kind: rep ? "rep" : unmatchedRepName ? "spoken" : "unassigned",
             calls: repCalls.length,
             avgScore: mean(scores(repCalls)),
             tiers: tierCounts(repCalls),
-            conversion: { wins, total, rate: total ? round1((wins / total) * 100) : null },
+            booking: rate(repCalls, "SALES"),
+            saves: rate(repCalls, "RETENTION"),
             flags: repCalls.reduce((n, c) => n + c.violations.length, 0),
             topMiss: criterionFails(repCalls, labelFor)[0]?.label ?? null,
         };
@@ -198,13 +232,17 @@ export function summarizeOverview(calls: OverviewCall[], range: RangeKey, now: D
     }
 
     const missed = current.filter((c) => c.outcome !== null && MISSED_OUTCOMES.includes(c.outcome)).sort((a, b) => b.date.getTime() - a.date.getTime());
-    const countViolations = (list: OverviewCall[]) => list.reduce((n, c) => n + c.violations.length, 0);
+    const quotes = missed.flatMap((c) => firstAmount(c.details?.priceQuoted) ?? []);
+    const flaggedCalls = (list: OverviewCall[]) => list.filter((c) => c.violations.length > 0).length;
 
     return {
+        periodStart: from.toISOString(),
         calls: current.length,
         previousCalls: previous?.length ?? null,
         avgScore: mean(scores(current)),
         previousAvgScore: previous ? mean(scores(previous)) : null,
+        scored: scores(current).length,
+        previousScored: previous ? scores(previous).length : null,
         tiers: tierCounts(current),
         outcomes: {
             SALES: outcome("SALES"),
@@ -213,9 +251,9 @@ export function summarizeOverview(calls: OverviewCall[], range: RangeKey, now: D
             NOT_SCORABLE: current.filter((c) => c.category === "NOT_SCORABLE").length,
         },
         flags: {
-            violations: countViolations(current),
-            calls: current.filter((c) => c.violations.length > 0).length,
-            previousViolations: previous ? countViolations(previous) : null,
+            violations: current.reduce((n, c) => n + c.violations.length, 0),
+            calls: flaggedCalls(current),
+            previousCalls: previous ? flaggedCalls(previous) : null,
         },
         granularity,
         trend: trend(current, from, now, granularity),
@@ -223,6 +261,6 @@ export function summarizeOverview(calls: OverviewCall[], range: RangeKey, now: D
         coaching: criterionFails(current, labelFor).slice(0, 5),
         policies: [...policyCalls].map(([rule, ids]) => ({ rule, calls: ids.size })).sort((a, b) => b.calls - a.calls),
         pestTypes: [...pestCounts].map(([name, n]) => ({ name, calls: n })).sort((a, b) => b.calls - a.calls).slice(0, 6),
-        missed: { total: missed.length, calls: missed.slice(0, 5) },
+        missed: { total: missed.length, quoted: quotes.reduce((a, b) => a + b, 0), quotedCalls: quotes.length, calls: missed.slice(0, 8) },
     };
 }

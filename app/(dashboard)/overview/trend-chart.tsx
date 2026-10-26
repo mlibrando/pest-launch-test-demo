@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type KeyboardEvent } from "react";
-import { LineChartUp01 } from "@untitledui/icons";
 import type { Overview, TrendBucket } from "@/lib/overview";
 import { cx } from "@/utils/cx";
 import { Card, formatPercent } from "./overview-ui";
@@ -57,7 +56,6 @@ export function TrendChart({ trend, granularity, className }: { trend: TrendBuck
     return (
         <Card
             className={className}
-            icon={LineChartUp01}
             title={METRICS[metric].title}
             description={`Per ${granularity}${metric === "score" ? ", across scored calls" : ""}`}
             action={
@@ -70,7 +68,7 @@ export function TrendChart({ trend, granularity, className }: { trend: TrendBuck
                             onClick={() => setMetric(key)}
                             className={cx(
                                 "rounded-md px-2.5 py-1 text-xs font-semibold transition outline-focus-ring focus-visible:outline-2",
-                                metric === key ? "bg-primary text-primary shadow-xs" : "text-quaternary hover:text-secondary",
+                                metric === key ? "bg-primary text-primary shadow-xs" : "text-tertiary hover:text-secondary",
                             )}
                         >
                             {METRICS[key].label}
@@ -83,7 +81,7 @@ export function TrendChart({ trend, granularity, className }: { trend: TrendBuck
                 <div className="relative h-52 pl-10">
                     {ticks.map((tick) => (
                         <div key={tick} className="absolute right-0 left-10 border-t border-secondary" style={{ bottom: `${(tick / max) * 100}%` }}>
-                            <span className="absolute -left-10 w-8 -translate-y-1/2 text-right text-xs text-quaternary tabular-nums">
+                            <span className="absolute -left-10 w-8 -translate-y-1/2 text-right text-xs text-tertiary tabular-nums">
                                 {metric === "score" ? `${tick}%` : tick.toLocaleString()}
                             </span>
                         </div>
@@ -137,7 +135,7 @@ export function TrendChart({ trend, granularity, className }: { trend: TrendBuck
                     {trend.map((bucket, i) => (
                         <span key={bucket.start} className="relative flex-1 text-center">
                             {(trend.length - 1 - i) % labelEvery === 0 && (
-                                <span className="absolute left-1/2 -translate-x-1/2 text-xs whitespace-nowrap text-quaternary">
+                                <span className="absolute left-1/2 -translate-x-1/2 text-xs whitespace-nowrap text-tertiary">
                                     {bucketLabel(bucket.start, granularity)}
                                 </span>
                             )}
@@ -146,25 +144,28 @@ export function TrendChart({ trend, granularity, className }: { trend: TrendBuck
                 </div>
                 <div className="h-4" />
 
-                <table className="sr-only">
-                    <caption>{METRICS[metric].title} by {granularity}</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Period</th>
-                            <th scope="col">Calls</th>
-                            <th scope="col">Average score</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {trend.map((bucket) => (
-                            <tr key={bucket.start}>
-                                <th scope="row">{bucketName(bucket.start, granularity)}</th>
-                                <td>{bucket.calls}</td>
-                                <td>{formatPercent(bucket.avgScore)}</td>
+                {/* The wrapper does the hiding: a table ignores the 1px box and overflow clip, so it would stretch the page. */}
+                <div className="sr-only">
+                    <table>
+                        <caption>{METRICS[metric].title} by {granularity}</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Period</th>
+                                <th scope="col">Calls</th>
+                                <th scope="col">Average score</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {trend.map((bucket) => (
+                                <tr key={bucket.start}>
+                                    <th scope="row">{bucketName(bucket.start, granularity)}</th>
+                                    <td>{bucket.calls}</td>
+                                    <td>{formatPercent(bucket.avgScore)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </Card>
     );

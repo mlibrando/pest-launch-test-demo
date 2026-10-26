@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { ClipboardCheck } from "@untitledui/icons";
-import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { Button } from "@/components/base/buttons/button";
 import { getActiveCompany } from "@/lib/companies";
 import { prisma } from "@/lib/prisma";
 import type { RubricData } from "@/lib/rubrics";
 import { CallTable } from "./call-table";
+import { CallTableSkeleton } from "./call-table-skeleton";
 import { RubricSetsModal } from "./rubric-sets-modal";
 import { UploadCallsButton } from "./upload-calls";
 
@@ -36,7 +36,7 @@ export default function CallsPage() {
                 </div>
             </div>
             {/* CallTable reads the URL's `?call=`, which isn't known until request time. */}
-            <Suspense fallback={<LoadingIndicator label="Loading calls…" className="text-sm text-tertiary" />}>
+            <Suspense fallback={<CallTableSkeleton />}>
                 <CallTable />
             </Suspense>
         </div>

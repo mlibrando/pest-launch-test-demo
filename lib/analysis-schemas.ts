@@ -48,6 +48,7 @@ export function classificationSchema(rubric: RubricData) {
         outcome: z.enum(ALL_OUTCOMES).nullable(),
         outcomeReason: z.string().nullable(),
         details: z.object({
+            customerName: z.string().nullable().describe("The customer's name as they or the rep said it"),
             pestType: z.string().nullable(),
             serviceRequested: z.string().nullable(),
             priceQuoted: z.string().nullable(),

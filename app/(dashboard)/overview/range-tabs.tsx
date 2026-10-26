@@ -35,7 +35,7 @@ export function RangeTabList({ active }: { active: RangeKey }) {
                     title={key === "all" ? "All time" : `Last ${RANGES[key].label}`}
                     className={cx(
                         "rounded-md px-3 py-1.5 text-sm font-semibold transition outline-focus-ring focus-visible:outline-2 focus-visible:outline-offset-2",
-                        key === active ? "bg-secondary text-primary" : "text-quaternary hover:bg-primary_hover hover:text-secondary",
+                        key === active ? "bg-secondary text-primary" : "text-tertiary hover:bg-primary_hover hover:text-secondary",
                     )}
                 >
                     {SHORT_LABEL[key]}

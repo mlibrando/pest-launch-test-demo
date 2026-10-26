@@ -71,6 +71,7 @@ export function CallAnalysisSection({ call, query, hasActiveRubric, onSeek }: Ca
 function AnalysisResult({ analysis, onSeek }: { analysis: CallAnalysis; onSeek: (utteranceIndex: number) => void }) {
     const quadrants = Map.groupBy(analysis.criteria, (c) => c.quadrant);
     const details = [
+        ["Customer", analysis.details?.customerName],
         ["Pest type", analysis.details?.pestType],
         ["Service requested", analysis.details?.serviceRequested],
         ["Price quoted", analysis.details?.priceQuoted],

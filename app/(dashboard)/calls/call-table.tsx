@@ -7,6 +7,7 @@ import { syncCalls } from "@/app/actions/calls";
 import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { ANALYSIS_FAILED_MESSAGE, CALLS_QUERY_KEY, formatSeconds } from "@/lib/calls";
 import { CallDetailPanel } from "./call-detail-panel";
+import { CallTableHead, CallTableSkeleton } from "./call-table-skeleton";
 import { DeleteCallButton, RetryButton, StatusBadge, TierBadge, type CallRow } from "./call-status";
 import { UploadCallsEmptyState } from "./upload-calls";
 
@@ -25,14 +26,33 @@ const POLL_INTERVAL_MS = 5000;
 const isInProgress = (call: CallRow, hasActiveRubric: boolean) =>
     call.status === "UPLOADED" || call.status === "TRANSCRIBING" || call.status === "ANALYZING" || (hasActiveRubric && call.status === "TRANSCRIBED");
 
+type RepFilter = { name: string; confirmed: boolean };
+
+const filterHref = (filter: RepFilter | null) =>
+    filter ? `/calls?${new URLSearchParams({ [filter.confirmed ? "rep" : "spoken"]: filter.name })}` : "/calls";
+
+const matchesRep = (call: CallRow, filter: RepFilter) =>
+    filter.confirmed ? call.rep?.name === filter.name : !call.rep && call.repName === filter.name;
+
 export function CallTable() {
+    const params = useSearchParams();
     // `?call=<id>` opens that call's panel, so other pages (like the Overview) can link straight to a call.
-    const linkedId = useSearchParams().get("call");
+    const linkedId = params.get("call");
     const [selectedId, setSelectedId] = useState<string | null>(linkedId);
+    // `?rep=<name>` shows one rep's calls; `?spoken=<name>` a name heard on calls that isn't matched to a rep yet.
+    const [repFilter, setRepFilter] = useState<RepFilter | null>(() => {
+        const rep = params.get("rep");
+        const spoken = params.get("spoken");
+        return rep ? { name: rep, confirmed: true } : spoken ? { name: spoken, confirmed: false } : null;
+    });
     const closePanel = () => {
         setSelectedId(null);
         // Drop the link so a refresh doesn't reopen the panel.
-        if (linkedId) window.history.replaceState(null, "", "/calls");
+        if (linkedId) window.history.replaceState(null, "", filterHref(repFilter));
+    };
+    const clearFilter = () => {
+        setRepFilter(null);
+        window.history.replaceState(null, "", "/calls");
     };
     // Each fetch also advances the queue, so polling while calls are in progress is what keeps them processing.
     const query = useQuery({
@@ -44,17 +64,14 @@ export function CallTable() {
     });
 
     if (!query.data) {
-        return query.isError ? (
-            <p className="text-sm text-error-primary">{query.error.message}</p>
-        ) : (
-            <LoadingIndicator label="Loading calls…" className="text-sm text-tertiary" />
-        );
+        return query.isError ? <p className="text-sm text-error-primary">{query.error.message}</p> : <CallTableSkeleton />;
     }
 
-    const { calls, repNames, hasActiveRubric } = query.data;
-    const selected = calls.find((c) => c.id === selectedId);
-    const queue = calls.filter((c) => c.status === "UPLOADED").reverse();
-    const inProgress = calls.filter((c) => isInProgress(c, hasActiveRubric)).length;
+    const { calls: allCalls, repNames, hasActiveRubric } = query.data;
+    const calls = repFilter ? allCalls.filter((c) => matchesRep(c, repFilter)) : allCalls;
+    const selected = allCalls.find((c) => c.id === selectedId);
+    const queue = allCalls.filter((c) => c.status === "UPLOADED").reverse();
+    const inProgress = allCalls.filter((c) => isInProgress(c, hasActiveRubric)).length;
 
     return (
         <section className="rounded-xl bg-primary shadow-xs ring-1 ring-secondary">
@@ -65,21 +82,23 @@ export function CallTable() {
                 </p>
             )}
 
-            {calls.length === 0 ? (
+            {repFilter && (
+                <p className="flex items-center justify-between gap-4 border-b border-secondary px-6 py-3 text-sm text-secondary">
+                    <span>
+                        {calls.length} call{calls.length === 1 ? "" : "s"} by <span className="font-medium text-primary">{repFilter.name}</span>
+                        {!repFilter.confirmed && " (not matched to a rep yet)"}
+                    </span>
+                    <button type="button" onClick={clearFilter} className="font-semibold text-tertiary outline-focus-ring hover:text-secondary focus-visible:outline-2">
+                        Show all calls
+                    </button>
+                </p>
+            )}
+
+            {allCalls.length === 0 ? (
                 <UploadCallsEmptyState />
             ) : (
                 <table className="w-full text-left text-sm">
-                    <thead className="border-b border-secondary text-xs text-tertiary">
-                        <tr>
-                            <th className="px-6 py-3 font-medium">Recording</th>
-                            <th className="px-6 py-3 font-medium">Rep</th>
-                            <th className="px-6 py-3 font-medium">Status</th>
-                            <th className="px-6 py-3 font-medium">Score</th>
-                            <th className="px-6 py-3 font-medium">Duration</th>
-                            <th className="px-6 py-3 font-medium">Uploaded</th>
-                            <th className="px-6 py-3" />
-                        </tr>
-                    </thead>
+                    <CallTableHead />
                     <tbody className="divide-y divide-secondary">
                         {calls.map((call) => (
                             <tr key={call.id} onClick={() => setSelectedId(call.id)} className="cursor-pointer hover:bg-primary_hover">

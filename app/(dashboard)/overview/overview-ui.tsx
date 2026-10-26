@@ -1,37 +1,32 @@
-import type { FC, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ArrowDown, ArrowUp } from "@untitledui/icons";
 import type { Tier } from "@/lib/calls";
-import type { TierCounts } from "@/lib/overview";
+import { Skeleton } from "@/components/base/skeleton/skeleton";
+import { MIN_COMPARABLE, type TierCounts } from "@/lib/overview";
 import { cx } from "@/utils/cx";
 
 export function Card({
     title,
     description,
-    icon: Icon,
     action,
     className,
+    flush,
     children,
 }: {
     title: string;
     description?: ReactNode;
-    icon?: FC<{ className?: string }>;
     action?: ReactNode;
     className?: string;
+    /** Lets tables and lists run edge to edge, with only the header padded. */
+    flush?: boolean;
     children: ReactNode;
 }) {
     return (
-        <section className={cx("flex flex-col gap-5 rounded-xl bg-primary p-6 shadow-xs ring-1 ring-secondary", className)}>
-            <header className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
-                    {Icon && (
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-secondary">
-                            <Icon className="size-5 text-fg-tertiary" />
-                        </span>
-                    )}
-                    <div className="flex flex-col gap-0.5">
-                        <h2 className="text-md font-semibold text-primary">{title}</h2>
-                        {description && <p className="text-sm text-tertiary">{description}</p>}
-                    </div>
+        <section className={cx("flex flex-col gap-5 rounded-xl bg-primary shadow-xs ring-1 ring-secondary", flush ? "pt-5" : "p-6", className)}>
+            <header className={cx("flex items-start justify-between gap-4", flush && "px-6")}>
+                <div className="flex flex-col gap-0.5">
+                    <h2 className="text-md font-semibold text-primary">{title}</h2>
+                    {description && <p className="text-sm text-tertiary">{description}</p>}
                 </div>
                 {action}
             </header>
@@ -53,8 +48,8 @@ export const Badge = ({ tone, title, children }: { tone: keyof typeof BADGE_TONE
     </span>
 );
 
-export const EmptyNote = ({ children }: { children: ReactNode }) => (
-    <p className="flex min-h-24 flex-1 items-center justify-center rounded-lg bg-secondary px-4 py-6 text-center text-sm text-tertiary">{children}</p>
+export const EmptyNote = ({ children, className }: { children: ReactNode; className?: string }) => (
+    <p className={cx("flex min-h-24 flex-1 items-center justify-center rounded-lg bg-secondary px-4 py-6 text-center text-sm text-tertiary", className)}>{children}</p>
 );
 
 type DeltaProps = {
@@ -65,15 +60,15 @@ type DeltaProps = {
     /** Which direction is good news; "neutral" keeps the delta gray. */
     goodWhen: "up" | "down" | "neutral";
     periodLabel: string;
+    /** Calls behind each side of a rate. Below MIN_COMPARABLE on either side, the change is noise and isn't shown. */
+    samples?: [current: number, previous: number | null];
 };
 
-/** "↑ 4.2 pts vs previous 30 days", colored by whether the change is good news. Renders nothing for all time. */
-export function Delta({ current, previous, unit, goodWhen, periodLabel }: DeltaProps) {
-    if (previous === null && current === null) return null;
-    const suffix = `vs previous ${periodLabel}`;
-    if (previous === null || current === null) {
-        return <p className="text-xs text-quaternary">{current === null ? `No data this period` : `No data in previous ${periodLabel}`}</p>;
-    }
+/** "↑ 4.2 pts vs prior 30 days", colored by whether the change is good news. */
+export function Delta({ current, previous, unit, goodWhen, periodLabel, samples }: DeltaProps) {
+    if (current === null || previous === null) return null;
+    if (samples && (samples[0] < MIN_COMPARABLE || (samples[1] ?? 0) < MIN_COMPARABLE)) return null;
+    const suffix = `vs prior ${periodLabel}`;
     const diff = Math.round((current - previous) * 10) / 10;
     if (diff === 0) return <p className="text-xs text-tertiary">No change {suffix}</p>;
 
@@ -98,54 +93,29 @@ export function Delta({ current, previous, unit, goodWhen, periodLabel }: DeltaP
     );
 }
 
+/** One cell of the KPI strip; the strip draws the dividers, so the tile has no frame of its own. */
 export function StatTile({
     label,
-    icon: Icon,
     value,
     detail,
     delta,
     className,
+    children,
 }: {
     label: string;
-    icon: FC<{ className?: string }>;
     value: ReactNode;
     detail?: ReactNode;
     delta?: ReactNode;
     className?: string;
+    children?: ReactNode;
 }) {
     return (
-        <div className={cx("flex flex-col gap-3 rounded-xl bg-primary p-5 shadow-xs ring-1 ring-secondary", className)}>
-            <p className="flex items-center gap-2 text-sm font-medium text-tertiary">
-                <Icon className="size-4 text-fg-quaternary" />
-                {label}
-            </p>
-            <div className="flex flex-col gap-1">
-                <p className="text-display-xs font-semibold text-primary">{value}</p>
-                {detail && <p className="text-xs text-tertiary">{detail}</p>}
-            </div>
-            {delta && <div className="mt-auto">{delta}</div>}
-        </div>
-    );
-}
-
-const METER_TONES = {
-    brand: { track: "bg-utility-brand-100", fill: "bg-utility-brand-600" },
-    error: { track: "bg-utility-red-100", fill: "bg-utility-red-500" },
-};
-
-/** A ratio against 100%: the fill and a lighter track from the same ramp. */
-export function Meter({ value, tone = "brand", className, label }: { value: number; tone?: keyof typeof METER_TONES; className?: string; label: string }) {
-    const clamped = Math.max(0, Math.min(100, value));
-    return (
-        <div
-            role="meter"
-            aria-label={label}
-            aria-valuenow={clamped}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            className={cx("h-2 overflow-hidden rounded-full", METER_TONES[tone].track, className)}
-        >
-            <div className={cx("h-full rounded-full", METER_TONES[tone].fill)} style={{ width: `${clamped}%` }} />
+        <div className={cx("flex flex-col gap-2 bg-primary p-5", className)}>
+            <p className="text-sm font-medium text-tertiary">{label}</p>
+            <p className="text-display-sm font-semibold text-primary tabular-nums">{value}</p>
+            {detail && <p className="text-xs text-secondary">{detail}</p>}
+            {children}
+            {delta && <div className="mt-auto pt-1">{delta}</div>}
         </div>
     );
 }
@@ -173,41 +143,29 @@ export function TierBar({ tiers, className }: { tiers: TierCounts; className?: s
 
 export const formatPercent = (value: number | null) => (value === null ? "–" : `${Number.isInteger(value) ? value : value.toFixed(1)}%`);
 
-// Five tiles: one row on wide screens, 2 + 3 on laptops, pairs on tablets with the last one full width.
-export const KPI_GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6 xl:grid-cols-5";
-export const KPI_SPANS = [
-    "lg:col-span-3 xl:col-span-1",
-    "lg:col-span-3 xl:col-span-1",
-    "lg:col-span-2 xl:col-span-1",
-    "lg:col-span-2 xl:col-span-1",
-    "sm:col-span-2 lg:col-span-2 xl:col-span-1",
-];
+export const formatMoney = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 
-const Shimmer = ({ className }: { className?: string }) => <div className={cx("animate-pulse rounded-md bg-secondary", className)} />;
+// Five cells in one framed strip; the 1px gap over a border-colored background draws the dividers at every breakpoint.
+export const KPI_STRIP = "grid grid-cols-1 gap-px overflow-hidden rounded-xl bg-border-secondary shadow-xs ring-1 ring-secondary sm:grid-cols-2 lg:grid-cols-5";
+export const KPI_LAST = "sm:col-span-2 lg:col-span-1";
+
+const Frame = ({ className }: { className?: string }) => <Skeleton className={cx("rounded-xl bg-primary ring-1 ring-secondary", className)} />;
 
 /** Mirrors the page layout so the content streams in without shifting. */
 export function OverviewSkeleton() {
     return (
         <div className="flex flex-col gap-6" aria-busy aria-label="Loading overview">
-            <div className={KPI_GRID}>
-                {KPI_SPANS.map((span, i) => (
-                    <div key={i} className={cx("flex flex-col gap-3 rounded-xl bg-primary p-5 shadow-xs ring-1 ring-secondary", span)}>
-                        <Shimmer className="h-4 w-24" />
-                        <Shimmer className="h-8 w-16" />
-                        <Shimmer className="h-3 w-32" />
+            <div className={KPI_STRIP}>
+                {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className={cx("flex flex-col gap-3 bg-primary p-5", i === 4 && KPI_LAST)}>
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-9 w-20" />
+                        <Skeleton className="h-3 w-32" />
                     </div>
                 ))}
             </div>
-            {[
-                ["h-96 xl:col-span-2", "h-96"],
-                ["h-80", "h-80 xl:col-span-2"],
-            ].map(([a, b], i) => (
-                <div key={i} className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-                    <Shimmer className={cx("rounded-xl bg-primary ring-1 ring-secondary", a)} />
-                    <Shimmer className={cx("rounded-xl bg-primary ring-1 ring-secondary", b)} />
-                </div>
-            ))}
-            <Shimmer className="h-64 rounded-xl bg-primary ring-1 ring-secondary" />
+            <Frame className="h-96" />
+            <Frame className="h-72" />
         </div>
     );
 }

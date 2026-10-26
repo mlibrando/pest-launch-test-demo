@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseRange, rangeBounds, summarizeOverview, type OverviewCall } from "@/lib/overview";
+import { firstAmount, parseRange, rangeBounds, summarizeOverview, type OverviewCall } from "@/lib/overview";
 
 const NOW = new Date("2026-10-26T15:00:00Z");
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
@@ -51,6 +51,9 @@ test("splits the current period from the previous one for deltas", () => {
     assert.equal(overview.previousCalls, 1);
     assert.equal(overview.avgScore, 70);
     assert.equal(overview.previousAvgScore, 40);
+    assert.equal(overview.scored, 2);
+    assert.equal(overview.previousScored, 1);
+    assert.equal(overview.periodStart, "2026-10-20T00:00:00.000Z");
 });
 
 test("all time has no previous period", () => {
@@ -81,7 +84,32 @@ test("outcome rates count wins over decided calls of that type only", () => {
     assert.equal(overview.outcomes.RETENTION.rate, 100);
     assert.equal(overview.outcomes.SERVICE.rate, null);
     assert.equal(overview.outcomes.NOT_SCORABLE, 1);
+    assert.equal(overview.outcomes.SALES.previousTotal, 0);
     assert.equal(overview.missed.total, 2);
+});
+
+test("firstAmount reads the first number quoted", () => {
+    assert.equal(firstAmount("$129 initial, $49/month"), 129);
+    assert.equal(firstAmount("1,250.50"), 1250.5);
+    assert.equal(firstAmount("free inspection"), null);
+    assert.equal(firstAmount(null), null);
+});
+
+test("missed opportunities total what was quoted on them", () => {
+    const overview = summarizeOverview(
+        [
+            call({ category: "SALES", outcome: "NOT_BOOKED", details: { priceQuoted: "$199" } }),
+            call({ category: "RETENTION", outcome: "LOST", details: { priceQuoted: "$49/month" } }),
+            call({ category: "SALES", outcome: "NOT_BOOKED", details: { priceQuoted: "a fair price" } }),
+            call({ category: "SALES", outcome: "BOOKED", details: { priceQuoted: "$500" } }),
+        ],
+        "30d",
+        NOW,
+        label,
+    );
+    assert.equal(overview.missed.total, 3);
+    assert.equal(overview.missed.quoted, 248);
+    assert.equal(overview.missed.quotedCalls, 2);
 });
 
 test("coaching ranks criteria by failures, keeping scorecards apart", () => {
@@ -89,8 +117,8 @@ test("coaching ranks criteria by failures, keeping scorecards apart", () => {
     const service = "All Calls";
     const overview = summarizeOverview(
         [
-            call({ scorecard: sales, criteria: [{ criterionId: "close", result: "FAIL" }, { criterionId: "greet", result: "PASS" }] }),
-            call({ scorecard: sales, criteria: [{ criterionId: "close", result: "FAIL" }, { criterionId: "greet", result: "NA" }] }),
+            call({ rep: "Ana", scorecard: sales, criteria: [{ criterionId: "close", result: "FAIL" }, { criterionId: "greet", result: "PASS" }] }),
+            call({ unmatchedRepName: "Ben", scorecard: sales, criteria: [{ criterionId: "close", result: "FAIL" }, { criterionId: "greet", result: "NA" }] }),
             call({ scorecard: service, criteria: [{ criterionId: "close", result: "FAIL" }] }),
         ],
         "30d",
@@ -98,10 +126,10 @@ test("coaching ranks criteria by failures, keeping scorecards apart", () => {
         label,
     );
     assert.deepEqual(
-        overview.coaching.map(({ key, fails, assessed, category }) => ({ key, fails, assessed, category })),
+        overview.coaching.map(({ key, fails, assessed, category, reps }) => ({ key, fails, assessed, category, reps })),
         [
-            { key: "Sales Calls::close", fails: 2, assessed: 2, category: "SALES" },
-            { key: "All Calls::close", fails: 1, assessed: 1, category: "SERVICE" },
+            { key: "Sales Calls::close", fails: 2, assessed: 2, category: "SALES", reps: ["Ana", "Ben"] },
+            { key: "All Calls::close", fails: 1, assessed: 1, category: "SERVICE", reps: [] },
         ],
     );
 });
@@ -109,7 +137,8 @@ test("coaching ranks criteria by failures, keeping scorecards apart", () => {
 test("reps: assigned reps first by score, then spoken names, then unassigned", () => {
     const overview = summarizeOverview(
         [
-            call({ rep: "Ana", score: 50 }),
+            call({ rep: "Ana", score: 50, category: "SALES", outcome: "BOOKED" }),
+            call({ rep: "Ana", score: 50, category: "RETENTION", outcome: "LOST" }),
             call({ rep: "Ben", score: 90, violations: [{ rule: "r1" }, { rule: "r2" }] }),
             call({ unmatchedRepName: "Ana", score: 100 }),
             call({ score: 100 }),
@@ -119,12 +148,12 @@ test("reps: assigned reps first by score, then spoken names, then unassigned", (
         label,
     );
     assert.deepEqual(
-        overview.reps.map((r) => [r.name, r.kind, r.avgScore, r.flags]),
+        overview.reps.map((r) => [r.name, r.kind, r.avgScore, r.flags, r.booking.rate, r.saves.rate]),
         [
-            ["Ben", "rep", 90, 2],
-            ["Ana", "rep", 50, 0],
-            ["Ana", "spoken", 100, 0],
-            ["Unassigned", "unassigned", 100, 0],
+            ["Ben", "rep", 90, 2, null, null],
+            ["Ana", "rep", 50, 0, 100, 0],
+            ["Ana", "spoken", 100, 0, null, null],
+            ["Unassigned", "unassigned", 100, 0, null, null],
         ],
     );
 });
@@ -141,7 +170,7 @@ test("policy flags count distinct calls per rule; pest types are normalized", ()
         label,
     );
     assert.deepEqual(overview.policies, [{ rule: "No interrupting", calls: 2 }]);
-    assert.deepEqual(overview.flags, { violations: 3, calls: 2, previousViolations: 0 });
+    assert.deepEqual(overview.flags, { violations: 3, calls: 2, previousCalls: 0 });
     assert.deepEqual(overview.pestTypes, [
         { name: "Mice", calls: 2 },
         { name: "Ants", calls: 1 },

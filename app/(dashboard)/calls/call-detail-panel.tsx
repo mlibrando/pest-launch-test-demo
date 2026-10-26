@@ -5,11 +5,11 @@ import { Edit05 } from "@untitledui/icons";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Key } from "react-aria-components";
 import { assignCallRep, getCallAnalysis, getCallAudioUrl, getCallTranscript, updateUtterance } from "@/app/actions/calls";
-import { LoadingIndicator } from "@/components/application/loading-indicator/loading-indicator";
 import { SlideoutPanel } from "@/components/application/slideout-panel/slideout-panel";
 import { Tabs } from "@/components/application/tabs/tabs";
 import { Button } from "@/components/base/buttons/button";
 import { Select } from "@/components/base/select/select";
+import { Skeleton } from "@/components/base/skeleton/skeleton";
 import { CALLS_QUERY_KEY, formatSeconds, PLAYBACK_URL_TTL_SEC, type Utterance } from "@/lib/calls";
 import { cx } from "@/utils/cx";
 import { CallAnalysisSection } from "./call-analysis";
@@ -123,7 +123,7 @@ export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: Ca
             <RepField call={call} repNames={repNames} />
 
             {isLoading ? (
-                <LoadingIndicator label="Loading call…" className="py-3 text-sm text-tertiary" />
+                <PanelSkeleton tab={tab} />
             ) : (
                 <>
                     {audio.isError ? (
@@ -181,6 +181,66 @@ export function CallDetailPanel({ call, repNames, hasActiveRubric, onClose }: Ca
                 </>
             )}
         </SlideoutPanel>
+    );
+}
+
+// Varied widths so the placeholder reads as text rather than a stack of identical bars.
+const LINE_WIDTHS = ["w-11/12", "w-3/4", "w-full", "w-2/3", "w-5/6", "w-1/2", "w-4/5"];
+
+/** Mirrors the loaded panel: the player, the tabs, then whichever tab will open. */
+function PanelSkeleton({ tab }: { tab: Key }) {
+    return (
+        <div aria-busy aria-label="Loading call" className="flex flex-col gap-5">
+            {/* The browser's audio controls are 54px tall; the margin matches the real player's bottom padding. */}
+            <Skeleton className="mb-2 h-[54px] w-full shrink-0 rounded-full" />
+            <div className="flex border-b border-secondary">
+                {["Analysis", "Transcript"].map((label) => (
+                    <span key={label} className="h-9 flex-1 pt-1 text-center text-sm font-semibold text-quaternary">
+                        {label}
+                    </span>
+                ))}
+            </div>
+            {tab === "analysis" ? (
+                <>
+                    <div className="flex flex-col gap-2">
+                        <Skeleton className="h-5 w-48" />
+                        <Skeleton className="h-4 w-72" />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        {LINE_WIDTHS.slice(0, 3).map((width) => (
+                            <Skeleton key={width} className={cx("h-4", width)} />
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-[6rem_1fr] gap-x-4 gap-y-2">
+                        {LINE_WIDTHS.slice(3, 6).map((width) => (
+                            <div key={width} className="contents">
+                                <Skeleton className="h-4 w-20" />
+                                <Skeleton className={cx("h-4", width)} />
+                            </div>
+                        ))}
+                    </div>
+                    {[0, 1].map((i) => (
+                        <div key={i} className="flex flex-col gap-2">
+                            <Skeleton className="h-5 w-32" />
+                            <div className="flex flex-col gap-2 rounded-lg p-3 ring-1 ring-secondary">
+                                <Skeleton className="h-4 w-40" />
+                                <Skeleton className="h-4 w-full" />
+                                <Skeleton className="h-4 w-3/4" />
+                            </div>
+                        </div>
+                    ))}
+                </>
+            ) : (
+                <div className="flex flex-col gap-1">
+                    {LINE_WIDTHS.map((width) => (
+                        <div key={width} className="flex gap-4 px-3 py-2">
+                            <Skeleton className="h-4 w-16 shrink-0" />
+                            <Skeleton className={cx("h-4", width)} />
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
